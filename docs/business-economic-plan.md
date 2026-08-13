@@ -39,6 +39,34 @@ The company should not begin by selling a broad, vague "AI drone platform." It s
 - event and traffic correlation analytics
 - geospatial intelligence for operational planning and investigations
 
+## 3.1 SIGINT payload opportunity and telecom partnership model
+
+The platform should include a SIGINT payload as a strategic add-on for later-stage value creation. This moves the product from camera-only detection to a richer sensing platform that can produce signal-quality intelligence, wireless environment maps, and geotagged RF records.
+
+### Strategic SIGINT modules
+
+- Wi-Fi SSID and BSSID discovery with geotagged observations
+- Bluetooth device discovery and signal strength mapping
+- RF spectrum and interference mapping for fixed and mobile environment capture
+- fox-hunting and signal localization for field troubleshooting and infrastructure validation
+- geospatial correlation between RF signatures and visual detections, geofences, and historical vehicle patterns
+
+### Monetization routes
+
+- sell aggregated coverage-quality and signal-heatmap datasets to telecom operators and infrastructure teams
+- sell geospatial RF anomaly reports to wireless carriers, campuses, and enterprise facilities
+- provide interference analysis, coverage validation, and antenna placement audits
+- build a premium data feed for telecom planning and network optimization.
+
+### Legal and operational guardrails
+
+- all collection should be conducted under a lawful purpose and customer contract
+- MAC and SSID data should be handled with retention controls and access restrictions
+- avoid unsupported personal identification or high-risk surveillance use cases
+- provide customer-specific data boundaries and clear retention policies
+
+This SIGINT layer creates a high-value B2B data product beyond pure visual AI and strengthens the value proposition for telecom and infrastructure partners.
+
 ## 4. Business model options
 
 ### SaaS and data subscriptions
@@ -97,6 +125,77 @@ IntelSight differentiates itself by combining the following:
 - context-aware analysis of place, time, frequency, and behavior
 - phased deployment from existing commercial drones to open autonomous systems
 - modular and auditable data pipeline rather than a fully black-box platform
+
+## 7. Conservative financial projections
+
+The business case should be conservative, especially in the early phase. The goal is not to assume a perfect growth curve, but to show that the product can reach operating efficiency with realistic unit volumes and recurring subscriptions.
+
+### Revenue assumptions
+
+| Revenue stream | Year 1 | Year 2 | Year 3 |
+|---|---:|---:|---:|
+| hardware units sold | 25 units | 80 units | 180 units |
+| average unit price | $4,000 | $4,500 | $5,000 |
+| hardware revenue | $100,000 | $360,000 | $900,000 |
+| recurring subscriptions | 40 clients | 180 clients | 420 clients |
+| average subscription | $500 / month | $600 / month | $700 / month |
+| annual subscription revenue | $240,000 | $1,296,000 | $3,528,000 |
+| telecom / RF data partnerships | 3 deals | 12 deals | 30 deals |
+| average data contract | $30,000 | $60,000 | $90,000 |
+| telecom revenue | $90,000 | $720,000 | $2,700,000 |
+| total revenue / turnover | $430,000 | $2,376,000 | $7,128,000 |
+
+### Direct cost assumptions
+
+| Cost category | Year 1 | Year 2 | Year 3 |
+|---|---:|---:|---:|
+| hardware COGS | $60,000 | $216,000 | $540,000 |
+| software / hosting / cloud | $25,000 | $95,000 | $240,000 |
+| subscription support and QA | $60,000 | $315,000 | $900,000 |
+| telecom data delivery cost | $36,000 | $288,000 | $1,080,000 |
+| field operations and logistics | $80,000 | $250,000 | $550,000 |
+| total direct costs | $261,000 | $1,164,000 | $3,310,000 |
+
+### Operating expense assumptions
+
+| Opex category | Year 1 | Year 2 | Year 3 |
+|---|---:|---:|---:|
+| engineering and product | $150,000 | $420,000 | $900,000 |
+| sales and marketing | $70,000 | $220,000 | $420,000 |
+| legal, compliance, and insurance | $30,000 | $80,000 | $120,000 |
+| admin and finance | $20,000 | $60,000 | $150,000 |
+| total operating expenses | $270,000 | $780,000 | $1,590,000 |
+
+### Profit and turnover forecast
+
+| Metric | Year 1 | Year 2 | Year 3 |
+|---|---:|---:|---:|
+| turnover / revenue | $430,000 | $2,376,000 | $7,128,000 |
+| gross profit | $169,000 | $1,212,000 | $3,818,000 |
+| operating profit before tax | -$101,000 | $432,000 | $2,228,000 |
+| EBITDA estimate | -$70,000 | $500,000 | $2,500,000 |
+| projected net margin | -23.5% | 18.2% | 31.3% |
+
+### Conservative operating assumptions
+
+- hardware gross margin: 35%–45%
+- SaaS / recurring gross margin: 60%–75%
+- telecom data gross margin: 50%–65%
+- support, field operations, and QA costs rise with deployment volume
+- enterprise sales cycles are longer than first-year assumptions, so the plan intentionally underwrites operating leverage
+- the first year is deliberately modeled conservatively to avoid overstating early profitability
+
+### Break-even logic
+
+The business is likely to break even once recurring revenue scales beyond a modest base of managed sites and subscriptions. A realistic break-even milestone is reached when:
+
+- recurring subscription revenue covers core operations and support
+- hardware revenue supports a modular field fleet at a controlled margin
+- telecom partnerships contribute a meaningful data revenue line without large customer acquisition overhead
+
+### Unit economics example
+
+At a conservative rate of 100 active recurring sites at $600/month, recurring annual revenue equals $720,000. A team of 2–3 field operators and one analytics lead can support this level if the workflow is standardized and mission operations are not overly manual. The product becomes operationally scalable when a typical drone unit is generating multiple mission jobs per week rather than single one-off flights.
 
 ## 8. Risks and mitigations
 
