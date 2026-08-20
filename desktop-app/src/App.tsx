@@ -23,7 +23,7 @@ type ScanResult = {
 };
 
 type ScanState = "idle" | "scanning" | "success" | "empty" | "error";
-type DashboardTab = "overview" | "video" | "map" | "3d" | "database" | "charts" | "lab" | "settings";
+type DashboardTab = "overview" | "video" | "map" | "3d" | "mission" | "database" | "charts" | "lab" | "settings";
 
 type LabArtifact = {
   name: string;
@@ -590,11 +590,13 @@ function GeolocationRays3D({
   objects,
   selectedHistory,
   selectedObject,
+  onSelect,
 }: {
   trajectory: TelemetryPoint3D[];
   objects: Array<GeolocatedObject & { latitude: number; longitude: number }>;
   selectedHistory: PositionedObservation[];
   selectedObject: (GeolocatedObject & { latitude: number; longitude: number }) | null;
+  onSelect: (trackId: number) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -602,6 +604,10 @@ function GeolocationRays3D({
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const groupRef = useRef<THREE.Group | null>(null);
+  const pointsMeshRef = useRef<THREE.Points | null>(null);
+  const objectIdsRef = useRef<number[]>([]);
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -612,7 +618,7 @@ function GeolocationRays3D({
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 10_000);
-    camera.position.set(60, -80, 90);
+    camera.position.set(40, 70, 70);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -623,13 +629,14 @@ function GeolocationRays3D({
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.target.set(0, 0, 10);
+    controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
     const group = new THREE.Group();
     scene.add(group);
     groupRef.current = group;
 
+    // Ground plane in the XZ plane (Y = 0), matching X=east, Y=up, Z=north.
     const grid = new THREE.GridHelper(400, 40, 0x334155, 0x1e293b);
     grid.position.y = 0;
     scene.add(grid);
@@ -639,6 +646,30 @@ function GeolocationRays3D({
     const directional = new THREE.DirectionalLight(0xffffff, 0.6);
     directional.position.set(40, 80, 60);
     scene.add(directional);
+
+    const handleClick = (event: MouseEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const pointer = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(pointer, camera);
+      const points = pointsMeshRef.current;
+      if (!points) return;
+      const intersects = raycaster.intersectObject(points);
+      if (intersects.length > 0) {
+        const index = intersects[0].index;
+        if (index !== undefined) {
+          const trackId = objectIdsRef.current[index];
+          if (trackId !== undefined) {
+            onSelectRef.current(trackId);
+          }
+        }
+      }
+    };
+    renderer.domElement.addEventListener("click", handleClick);
+    renderer.domElement.style.cursor = "pointer";
 
     const resize = () => {
       const width = container.clientWidth || 1;
@@ -662,6 +693,7 @@ function GeolocationRays3D({
     return () => {
       observer.disconnect();
       cancelAnimationFrame(animationFrame);
+      renderer.domElement.removeEventListener("click", handleClick);
       controls.dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === container) {
@@ -672,6 +704,7 @@ function GeolocationRays3D({
       cameraRef.current = null;
       controlsRef.current = null;
       groupRef.current = null;
+      pointsMeshRef.current = null;
     };
   }, []);
 
@@ -691,6 +724,7 @@ function GeolocationRays3D({
         }
       }
     }
+    pointsMeshRef.current = null;
 
     const reference = trajectory[0] ?? { latitude: 25.7699, longitude: -80.3587 };
     const enu = (latitude: number, longitude: number): [number, number] => toEnu(latitude, longitude, reference);
@@ -698,21 +732,25 @@ function GeolocationRays3D({
     if (trajectory.length > 1) {
       const positions = trajectory.map((point) => {
         const [east, north] = enu(point.latitude, point.longitude);
-        return new THREE.Vector3(east, north, Math.max(0, point.altitude));
+        return new THREE.Vector3(east, Math.max(0, point.altitude), north);
       });
       const geometry = new THREE.BufferGeometry().setFromPoints(positions);
       const material = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85 });
       group.add(new THREE.Line(geometry, material));
     }
 
+    const objectIds = objects.map((item) => item.track_id);
+    objectIdsRef.current = objectIds;
     const objectPositions = objects.map((item) => {
       const [east, north] = enu(item.latitude, item.longitude);
-      return new THREE.Vector3(east, north, 0.5);
+      return new THREE.Vector3(east, 0.5, north);
     });
     if (objectPositions.length > 0) {
       const geometry = new THREE.BufferGeometry().setFromPoints(objectPositions);
       const material = new THREE.PointsMaterial({ color: 0xf43f5e, size: 1.6, sizeAttenuation: true });
-      group.add(new THREE.Points(geometry, material));
+      const points = new THREE.Points(geometry, material);
+      group.add(points);
+      pointsMeshRef.current = points;
     }
 
     if (selectedObject) {
@@ -720,7 +758,7 @@ function GeolocationRays3D({
       const markerGeometry = new THREE.SphereGeometry(1.2, 16, 16);
       const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xf97316 });
       const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-      marker.position.set(selectedEast, selectedNorth, 0.5);
+      marker.position.set(selectedEast, 0.5, selectedNorth);
       group.add(marker);
 
       const frameToPoint = new Map<number, TelemetryPoint3D>();
@@ -731,8 +769,8 @@ function GeolocationRays3D({
         const drone = frameToPoint.get(observation.frame);
         if (!drone) continue;
         const [droneEast, droneNorth] = enu(drone.latitude, drone.longitude);
-        rayPositions.push(new THREE.Vector3(droneEast, droneNorth, Math.max(0.5, drone.altitude)));
-        rayPositions.push(new THREE.Vector3(selectedEast, selectedNorth, 0.5));
+        rayPositions.push(new THREE.Vector3(droneEast, Math.max(0.5, drone.altitude), droneNorth));
+        rayPositions.push(new THREE.Vector3(selectedEast, 0.5, selectedNorth));
       }
       if (rayPositions.length > 0) {
         const rayGeometry = new THREE.BufferGeometry().setFromPoints(rayPositions);
@@ -745,9 +783,9 @@ function GeolocationRays3D({
     if (box.isEmpty()) return;
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
-    const maxDimension = Math.max(size.x, size.y, 20);
+    const maxDimension = Math.max(size.x, size.y, size.z, 20);
     controls.target.copy(center);
-    camera.position.set(center.x + maxDimension * 0.6, center.y - maxDimension * 0.8, center.z + maxDimension * 0.7);
+    camera.position.set(center.x + maxDimension * 0.6, center.y + maxDimension * 0.7, center.z + maxDimension * 0.8);
     camera.near = Math.max(0.1, maxDimension / 100);
     camera.far = maxDimension * 20;
     camera.updateProjectionMatrix();
@@ -1271,14 +1309,14 @@ function App() {
         </header>
 
         <nav className="view-tabs" aria-label="Mission views">
-          {(["overview", "video", "map", "3d", "database", "charts", "lab", "settings"] as DashboardTab[]).map((tab) => (
+          {(["overview", "video", "map", "3d", "mission", "database", "charts", "lab", "settings"] as DashboardTab[]).map((tab) => (
             <button
               key={tab}
               type="button"
               className={activeTab === tab ? "active" : ""}
               onClick={() => setActiveTab(tab)}
             >
-              {tab === "lab" ? "Workshop Lab" : tab === "3d" ? "3D View" : tab}
+              {tab === "lab" ? "Workshop Lab" : tab === "3d" ? "3D View" : tab === "mission" ? "Mission" : tab}
               {tab === "database" && cvResult ? ` (${cvResult.objects.length})` : ""}
             </button>
           ))}
@@ -1549,10 +1587,81 @@ function App() {
                   objects={geolocatedObjects}
                   selectedHistory={selectedIdentityHistory}
                   selectedObject={selectedIdentity}
+                  onSelect={setSelectedIdentityId}
                 />
               </div>
             ) : (
               <div className="panel-empty">Load an SRT trajectory to render the 3D geolocation view.</div>
+            )}
+          </section>
+        )}
+
+        {activeTab === "mission" && (
+          <section className="panel workspace-panel">
+            <div className="panel-header-row">
+              <div>
+                <h3>Mission view</h3>
+                <p>Map, 3D geolocation, and object database side by side. Select an identity from any panel.</p>
+              </div>
+              <div className="map-controls-row">
+                <select value={historyMode} onChange={(event) => setHistoryMode(event.target.value as "latest" | "history")} aria-label="Identity display mode">
+                  <option value="latest">Latest positions</option>
+                  <option value="history">Entire observation history</option>
+                </select>
+                {selectedIdentity && <strong className="data-badge">Identity #{selectedIdentity.track_id}</strong>}
+              </div>
+            </div>
+            {telemetryPoints.length > 0 ? (
+              <div className="mission-view-layout">
+                <div className="mission-panel mission-map-panel">
+                  <div className="mission-panel-title">Map</div>
+                  <MapContainer center={[mapPoints[0]?.latitude ?? geolocatedObjects[0]?.latitude ?? 25.7699, mapPoints[0]?.longitude ?? geolocatedObjects[0]?.longitude ?? -80.3587]} zoom={18} maxZoom={22} scrollWheelZoom className="leaflet-map mission-map">
+                    <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxNativeZoom={19} maxZoom={22} />
+                    {mapBounds && <FitMapBounds bounds={mapBounds} />}
+                    {mapPoints.length > 1 && <Polyline positions={mapPoints.map((point) => [point.latitude, point.longitude])} pathOptions={{ color: "#0284c7", weight: 4 }} />}
+                    {selectedIdentityHistory.length > 1 && (
+                      <Polyline positions={selectedIdentityHistory.map((item) => [item.latitude, item.longitude])} pathOptions={{ color: "#0ea5e9", weight: 3, dashArray: "6 4" }} />
+                    )}
+                    {geolocatedObjects.map((item) => (
+                      <CircleMarker
+                        key={item.track_id}
+                        center={[item.latitude, item.longitude]}
+                        radius={selectedIdentityId === item.track_id ? 10 : 7}
+                        pathOptions={{ color: "#fff1f2", fillColor: selectedIdentityId === item.track_id ? "#e11d48" : "#f43f5e", fillOpacity: 0.92, weight: 2 }}
+                        eventHandlers={{ click: () => setSelectedIdentityId(item.track_id) }}
+                      >
+                        <Tooltip direction="top">Identity {item.track_id} · {item.class_name} · {item.observations} sightings</Tooltip>
+                      </CircleMarker>
+                    ))}
+                  </MapContainer>
+                </div>
+                <div className="mission-panel mission-3d-panel">
+                  <div className="mission-panel-title">3D geolocation</div>
+                  <GeolocationRays3D
+                    trajectory={telemetryPoints}
+                    objects={geolocatedObjects}
+                    selectedHistory={selectedIdentityHistory}
+                    selectedObject={selectedIdentity}
+                    onSelect={setSelectedIdentityId}
+                  />
+                </div>
+                <div className="mission-panel mission-database-panel">
+                  <div className="mission-panel-title">Object database</div>
+                  {cvResult?.objects.length ? (
+                    <div className="table-wrap mission-table"><table><thead><tr><th>Track</th><th>Class</th><th>Conf</th><th>Obs</th><th>Latitude</th><th>Longitude</th><th>Spread</th></tr></thead><tbody>
+                      {cvResult.objects.map((item) => (
+                        <tr key={`${item.track_id}-${item.first_frame}`} className={selectedIdentityId === item.track_id ? "selected" : ""} onClick={() => setSelectedIdentityId(item.track_id)}>
+                          <td>#{item.track_id}</td><td>{item.class_name}</td><td>{(item.confidence * 100).toFixed(0)}%</td><td>{item.observations}</td><td>{item.latitude?.toFixed(6) ?? "--"}</td><td>{item.longitude?.toFixed(6) ?? "--"}</td><td>{item.geo_spread_m != null ? `${item.geo_spread_m.toFixed(2)} m` : "--"}</td>
+                        </tr>
+                      ))}
+                    </tbody></table></div>
+                  ) : (
+                    <div className="panel-empty">Run a CV preview to populate the object database.</div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="panel-empty">Load an SRT trajectory to open the combined mission view.</div>
             )}
           </section>
         )}

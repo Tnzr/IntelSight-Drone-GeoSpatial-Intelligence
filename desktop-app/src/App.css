@@ -1406,3 +1406,89 @@ th {
   width: 100%;
   height: 100%;
 }
+
+.mission-view-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: 480px auto;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.mission-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.mission-panel-title {
+  padding: 0.45rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.mission-map-panel {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.mission-3d-panel {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.mission-database-panel {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.mission-map {
+  flex: 1;
+  min-height: 0;
+}
+
+.mission-3d-panel .geolocation-3d-canvas {
+  flex: 1;
+  min-height: 0;
+}
+
+.mission-table {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.mission-table tbody tr {
+  cursor: pointer;
+}
+
+.mission-table tbody tr:hover {
+  background: rgba(14, 165, 233, 0.12);
+}
+
+.mission-table tbody tr.selected {
+  background: rgba(225, 29, 72, 0.16);
+  outline: 1px solid rgba(225, 29, 72, 0.55);
+}
+
+@media (max-width: 1100px) {
+  .mission-view-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 420px 420px auto;
+  }
+
+  .mission-map-panel,
+  .mission-3d-panel,
+  .mission-database-panel {
+    grid-column: 1;
+  }
+
+  .mission-map-panel { grid-row: 1; }
+  .mission-3d-panel { grid-row: 2; }
+  .mission-database-panel { grid-row: 3; }
+}

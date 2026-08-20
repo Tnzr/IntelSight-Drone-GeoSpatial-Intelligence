@@ -237,3 +237,14 @@ Implement desktop-style mission visualization without redundant loading of large
 
 2. Interactive frame inspector
 - Reverted to read_media_file + Blob URL (the proven path) with the proxy capped at 30s, fixing the blank video background that convertFileSrc produced for the app data dir.
+
+## 2026-08-20 3D orientation fix, click-to-select, and combined mission view
+
+1. 3D orientation
+- Reoriented the scene to X=east, Y=up (altitude), Z=north so the ground plane is the Lat/Lon plane with vertical altitude; detections sit at ground level and rays drop from the drone pose to the ground.
+
+2. Click-to-select in 3D
+- Added raycasting so clicking an object point in the 3D view selects that identity (shared selectedIdentityId across Map/Database/3D).
+
+3. Combined mission view
+- New "Mission" tab renders Map, 3D geolocation, and the object database in one screen with shared selection; each panel remains independently scrollable/zoomable.
