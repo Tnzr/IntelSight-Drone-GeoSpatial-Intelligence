@@ -1394,3 +1394,15 @@ th {
 .object-count-chart .object-count-bar {
   background: #f59e0b;
 }
+
+.geolocation-3d-stage {
+  height: 560px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.geolocation-3d-canvas {
+  width: 100%;
+  height: 100%;
+}

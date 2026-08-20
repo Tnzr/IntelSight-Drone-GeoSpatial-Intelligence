@@ -3,6 +3,8 @@ import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
 import type { LatLngBoundsExpression } from "leaflet";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
 
@@ -21,7 +23,7 @@ type ScanResult = {
 };
 
 type ScanState = "idle" | "scanning" | "success" | "empty" | "error";
-type DashboardTab = "overview" | "video" | "map" | "database" | "charts" | "lab" | "settings";
+type DashboardTab = "overview" | "video" | "map" | "3d" | "database" | "charts" | "lab" | "settings";
 
 type LabArtifact = {
   name: string;
@@ -374,7 +376,7 @@ function InteractiveCvViewer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [records, setRecords] = useState<FrameRecord[]>([]);
-  const [proxyPath, setProxyPath] = useState("");
+  const [proxySource, setProxySource] = useState("");
   const [viewerError, setViewerError] = useState<string | null>(null);
   const [currentFrame, setCurrentFrame] = useState<number | null>(null);
   const [showBoxes, setShowBoxes] = useState(true);
@@ -396,15 +398,19 @@ function InteractiveCvViewer({
   useEffect(() => {
     let cancelled = false;
     const onProgress = new Channel<ProgressUpdate>();
+    // Limit inspector proxy to 30s to keep file size manageable for Blob URL
+    const inspectorDuration = fullVideo ? 30 : Math.min(durationSeconds, 30);
     invoke<string>("prepare_media_preview", {
       path: videoPath,
       startSeconds: startOffsetSeconds,
-      durationSeconds: durationSeconds,
-      fullVideo,
+      durationSeconds: inspectorDuration,
       onProgress,
     })
-      .then((path) => {
-        if (!cancelled) setProxyPath(path);
+      .then(async (path) => {
+        if (cancelled) return;
+        const bytes = await invoke<ArrayBuffer>("read_media_file", { path });
+        if (cancelled) return;
+        setProxySource(URL.createObjectURL(new Blob([bytes], { type: "video/mp4" })));
       })
       .catch((err) => {
         if (!cancelled) setViewerError(String(err));
@@ -433,7 +439,7 @@ function InteractiveCvViewer({
     };
     const raf = requestAnimationFrame(measure);
     return () => cancelAnimationFrame(raf);
-  }, [proxyPath]);
+  }, [proxySource]);
 
   const frameIndex = useMemo(() => {
     const map = new Map<number, FrameRecord>();
@@ -506,7 +512,7 @@ function InteractiveCvViewer({
   useEffect(() => {
     drawOverlay();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFrame, showBoxes, showLabels, showFlow, records, proxyPath]);
+  }, [currentFrame, showBoxes, showLabels, showFlow, records, proxySource]);
 
   function seekToFrame(frame: number) {
     const video = videoRef.current;
@@ -524,14 +530,14 @@ function InteractiveCvViewer({
   }
 
   if (viewerError) return <div className="media-error">Interactive viewer error: {viewerError}</div>;
-  if (!proxyPath) return <div className="media-loading">Preparing seekable preview for the CV window...</div>;
+  if (!proxySource) return <div className="media-loading">Preparing seekable preview for the CV window...</div>;
 
   return (
     <div className="interactive-viewer">
       <div className="interactive-stage">
         <video
           ref={videoRef}
-          src={convertFileSrc(proxyPath)}
+          src={proxySource}
           controls
           preload="auto"
           onTimeUpdate={onTimeUpdate}
@@ -569,6 +575,186 @@ function InteractiveCvViewer({
       </div>
     </div>
   );
+}
+
+type TelemetryPoint3D = { latitude: number; longitude: number; altitude: number; frame: number };
+
+function toEnu(latitude: number, longitude: number, reference: { latitude: number; longitude: number }): [number, number] {
+  const east = (longitude - reference.longitude) * 111_320 * Math.cos((reference.latitude * Math.PI) / 180);
+  const north = (latitude - reference.latitude) * 111_320;
+  return [east, north];
+}
+
+function GeolocationRays3D({
+  trajectory,
+  objects,
+  selectedHistory,
+  selectedObject,
+}: {
+  trajectory: TelemetryPoint3D[];
+  objects: Array<GeolocatedObject & { latitude: number; longitude: number }>;
+  selectedHistory: PositionedObservation[];
+  selectedObject: (GeolocatedObject & { latitude: number; longitude: number }) | null;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const groupRef = useRef<THREE.Group | null>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b1220);
+    sceneRef.current = scene;
+
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 10_000);
+    camera.position.set(60, -80, 90);
+    cameraRef.current = camera;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.target.set(0, 0, 10);
+    controlsRef.current = controls;
+
+    const group = new THREE.Group();
+    scene.add(group);
+    groupRef.current = group;
+
+    const grid = new THREE.GridHelper(400, 40, 0x334155, 0x1e293b);
+    grid.position.y = 0;
+    scene.add(grid);
+
+    const hemisphere = new THREE.HemisphereLight(0xffffff, 0x334155, 1.1);
+    scene.add(hemisphere);
+    const directional = new THREE.DirectionalLight(0xffffff, 0.6);
+    directional.position.set(40, 80, 60);
+    scene.add(directional);
+
+    const resize = () => {
+      const width = container.clientWidth || 1;
+      const height = container.clientHeight || 1;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
+
+    let animationFrame = 0;
+    const animate = () => {
+      animationFrame = requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(animationFrame);
+      controls.dispose();
+      renderer.dispose();
+      if (renderer.domElement.parentElement === container) {
+        container.removeChild(renderer.domElement);
+      }
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      controlsRef.current = null;
+      groupRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const group = groupRef.current;
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!group || !scene || !camera || !controls) return;
+
+    while (group.children.length > 0) {
+      const child = group.children.pop();
+      if (child) {
+        if (child instanceof THREE.Line || child instanceof THREE.Points || child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          (child.material as THREE.Material).dispose();
+        }
+      }
+    }
+
+    const reference = trajectory[0] ?? { latitude: 25.7699, longitude: -80.3587 };
+    const enu = (latitude: number, longitude: number): [number, number] => toEnu(latitude, longitude, reference);
+
+    if (trajectory.length > 1) {
+      const positions = trajectory.map((point) => {
+        const [east, north] = enu(point.latitude, point.longitude);
+        return new THREE.Vector3(east, north, Math.max(0, point.altitude));
+      });
+      const geometry = new THREE.BufferGeometry().setFromPoints(positions);
+      const material = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85 });
+      group.add(new THREE.Line(geometry, material));
+    }
+
+    const objectPositions = objects.map((item) => {
+      const [east, north] = enu(item.latitude, item.longitude);
+      return new THREE.Vector3(east, north, 0.5);
+    });
+    if (objectPositions.length > 0) {
+      const geometry = new THREE.BufferGeometry().setFromPoints(objectPositions);
+      const material = new THREE.PointsMaterial({ color: 0xf43f5e, size: 1.6, sizeAttenuation: true });
+      group.add(new THREE.Points(geometry, material));
+    }
+
+    if (selectedObject) {
+      const [selectedEast, selectedNorth] = enu(selectedObject.latitude, selectedObject.longitude);
+      const markerGeometry = new THREE.SphereGeometry(1.2, 16, 16);
+      const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xf97316 });
+      const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+      marker.position.set(selectedEast, selectedNorth, 0.5);
+      group.add(marker);
+
+      const frameToPoint = new Map<number, TelemetryPoint3D>();
+      for (const point of trajectory) frameToPoint.set(point.frame, point);
+
+      const rayPositions: THREE.Vector3[] = [];
+      for (const observation of selectedHistory) {
+        const drone = frameToPoint.get(observation.frame);
+        if (!drone) continue;
+        const [droneEast, droneNorth] = enu(drone.latitude, drone.longitude);
+        rayPositions.push(new THREE.Vector3(droneEast, droneNorth, Math.max(0.5, drone.altitude)));
+        rayPositions.push(new THREE.Vector3(selectedEast, selectedNorth, 0.5));
+      }
+      if (rayPositions.length > 0) {
+        const rayGeometry = new THREE.BufferGeometry().setFromPoints(rayPositions);
+        const rayMaterial = new THREE.LineBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.55 });
+        group.add(new THREE.LineSegments(rayGeometry, rayMaterial));
+      }
+    }
+
+    const box = new THREE.Box3().setFromObject(group);
+    if (box.isEmpty()) return;
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDimension = Math.max(size.x, size.y, 20);
+    controls.target.copy(center);
+    camera.position.set(center.x + maxDimension * 0.6, center.y - maxDimension * 0.8, center.z + maxDimension * 0.7);
+    camera.near = Math.max(0.1, maxDimension / 100);
+    camera.far = maxDimension * 20;
+    camera.updateProjectionMatrix();
+    controls.update();
+  }, [trajectory, objects, selectedHistory, selectedObject]);
+
+  return <div ref={containerRef} className="geolocation-3d-canvas" />;
 }
 
 function App() {
@@ -1085,14 +1271,14 @@ function App() {
         </header>
 
         <nav className="view-tabs" aria-label="Mission views">
-          {(["overview", "video", "map", "database", "charts", "lab", "settings"] as DashboardTab[]).map((tab) => (
+          {(["overview", "video", "map", "3d", "database", "charts", "lab", "settings"] as DashboardTab[]).map((tab) => (
             <button
               key={tab}
               type="button"
               className={activeTab === tab ? "active" : ""}
               onClick={() => setActiveTab(tab)}
             >
-              {tab === "lab" ? "Workshop Lab" : tab}
+              {tab === "lab" ? "Workshop Lab" : tab === "3d" ? "3D View" : tab}
               {tab === "database" && cvResult ? ` (${cvResult.objects.length})` : ""}
             </button>
           ))}
@@ -1343,6 +1529,30 @@ function App() {
               </div>
             ) : (
               <div className="panel-empty">Select an SRT trajectory file to draw its geospatial path.</div>
+            )}
+          </section>
+        )}
+
+        {activeTab === "3d" && (
+          <section className="panel workspace-panel">
+            <div className="panel-header-row">
+              <div>
+                <h3>3D geolocation view</h3>
+                <p>Drone trajectory, detected objects, and geolocation rays for the selected identity. Drag to rotate, scroll to zoom.</p>
+              </div>
+              {selectedIdentity && <strong className="data-badge">Identity #{selectedIdentity.track_id} · {selectedIdentityHistory.length} rays</strong>}
+            </div>
+            {telemetryPoints.length > 0 ? (
+              <div className="geolocation-3d-stage">
+                <GeolocationRays3D
+                  trajectory={telemetryPoints}
+                  objects={geolocatedObjects}
+                  selectedHistory={selectedIdentityHistory}
+                  selectedObject={selectedIdentity}
+                />
+              </div>
+            ) : (
+              <div className="panel-empty">Load an SRT trajectory to render the 3D geolocation view.</div>
             )}
           </section>
         )}

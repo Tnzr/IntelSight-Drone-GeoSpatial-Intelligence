@@ -229,3 +229,11 @@ Implement desktop-style mission visualization without redundant loading of large
 - Live playback FPS readout and on-the-fly overlay toggles (boxes, labels, optical-flow tint + ROI flow magnitude).
 
 3. Geolocation algorithm selection is deferred to the streaming tracker phase (Phase C); the current ground-ray projection remains the single algorithm for the batch preview.
+
+## 2026-08-20 3D geolocation view and inspector playback fix
+
+1. 3D geolocation view (new tab)
+- Added a Three.js "3D View" tab rendering the drone trajectory (ENU-projected), detected objects as ground points, and geolocation rays from the drone pose at each observation frame down to the selected identity's ground position. OrbitControls for rotate/zoom/pan; scene auto-frames to the data extent.
+
+2. Interactive frame inspector
+- Reverted to read_media_file + Blob URL (the proven path) with the proxy capped at 30s, fixing the blank video background that convertFileSrc produced for the app data dir.
