@@ -148,3 +148,9 @@ data/flightrecords/** (gitignored media)
 - Tauri: start-offset trim control, maxZoom 22, latest/history map modes, per-identity observation history, crop fallback fix, geo_spread display.
 - Home clone (`~/IntelSight-Drone-GeoSpatial-Intelligence`) synced from workspace; `make desktop` verified; tsc + cargo check + 33/33 tests pass.
 - Remaining: plate/OCR feed from geotagged rear-view detections (Phase B), tracker module (Phase C), PostGIS (Phase D).
+
+### 2026-08-20 (late) — repo committed to GitHub + Settings tab
+
+- Working repo is the home clone (`~/IntelSight-Drone-GeoSpatial-Intelligence`, remote Tnzr/IntelSight-Drone-GeoSpatial-Intelligence); the HDD11 path stays as a working mirror kept in sync.
+- Commits pushed: `6156a55` (full implementation: cv-pipeline, flightrecord-parser, web-dashboard, Tauri app, scripts, tests, docs) and `89384e8` (Settings tab + tab functional requirements + architecture diagram).
+- Added `plans/desktop-app-tab-requirements.md` as the functional spec for every tab, with the improvement backlog: playback resolution presets, plate/OCR batch trigger from geotagged detections (incl. rear views), geofence overlays, multi-run identity aggregation, lab regeneration from the app, auto-scan for recent missions.
