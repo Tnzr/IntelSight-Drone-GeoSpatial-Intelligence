@@ -217,3 +217,15 @@ Implement desktop-style mission visualization without redundant loading of large
 
 2. Interactive frame inspector video
 - Replaced `convertFileSrc` (which could not reach the app cache dir) with the proven `read_media_file` + Blob URL path used by the overlay player, so the inspector video renders instead of a black unplayable frame.
+
+## 2026-08-20 Charts object count, inspector playback fix, live FPS and overlay toggles
+
+1. Charts tab
+- Added "Objects in scene" chart: per-frame object counts bucketed from the CV run's track history, with peak and average object metrics.
+
+2. Interactive frame inspector
+- Proxy now written to the app data dir (in asset-protocol scope) and played via convertFileSrc instead of reading the whole file into memory as a Blob, eliminating the decoding lag/corruption on longer clips.
+- prepare_media_preview accepts a full_video flag so full-video proxies are no longer clamped to 120s.
+- Live playback FPS readout and on-the-fly overlay toggles (boxes, labels, optical-flow tint + ROI flow magnitude).
+
+3. Geolocation algorithm selection is deferred to the streaming tracker phase (Phase C); the current ground-ray projection remains the single algorithm for the batch preview.

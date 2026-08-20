@@ -440,6 +440,7 @@ async fn prepare_media_preview(
     path: String,
     start_seconds: Option<f64>,
     duration_seconds: Option<f64>,
+    full_video: Option<bool>,
     on_progress: Channel<ProgressUpdate>,
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -449,7 +450,12 @@ async fn prepare_media_preview(
         }
 
         let start_seconds = start_seconds.unwrap_or(0.0).max(0.0);
-        let duration_seconds = duration_seconds.unwrap_or(10.0).clamp(2.0, 120.0);
+        let full_video = full_video.unwrap_or(false);
+        let duration_seconds = if full_video {
+            86_400.0
+        } else {
+            duration_seconds.unwrap_or(10.0).clamp(2.0, 120.0)
+        };
 
         let metadata = fs::metadata(source).map_err(|err| err.to_string())?;
         let mut hasher = DefaultHasher::new();
@@ -459,13 +465,13 @@ async fn prepare_media_preview(
         start_seconds.to_bits().hash(&mut hasher);
         duration_seconds.to_bits().hash(&mut hasher);
 
-        let cache_dir = app
+        let preview_dir = app
             .path()
-            .app_cache_dir()
-            .map_err(|err| format!("Could not resolve preview cache: {err}"))?
+            .app_data_dir()
+            .map_err(|err| format!("Could not resolve preview directory: {err}"))?
             .join("media-previews");
-        fs::create_dir_all(&cache_dir).map_err(|err| err.to_string())?;
-        let output = cache_dir.join(format!("{:016x}.mp4", hasher.finish()));
+        fs::create_dir_all(&preview_dir).map_err(|err| err.to_string())?;
+        let output = preview_dir.join(format!("{:016x}.mp4", hasher.finish()));
 
         if output.is_file() && fs::metadata(&output).map(|item| item.len() > 0).unwrap_or(false) {
             report_progress(&on_progress, "complete", 10_000, 10_000, "Using cached video preview");

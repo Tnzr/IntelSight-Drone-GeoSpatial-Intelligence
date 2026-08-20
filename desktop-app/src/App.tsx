@@ -95,6 +95,7 @@ type CvPreviewResult = {
     frame_step: number;
     duration_seconds: number;
     start_offset_seconds?: number;
+    full_video?: boolean;
     roi_padding: number;
     device: string;
   };
@@ -354,6 +355,7 @@ function InteractiveCvViewer({
   detectionsPath,
   startOffsetSeconds,
   durationSeconds,
+  fullVideo,
   videoFps,
   videoWidth,
   videoHeight,
@@ -363,6 +365,7 @@ function InteractiveCvViewer({
   detectionsPath: string;
   startOffsetSeconds: number;
   durationSeconds: number;
+  fullVideo: boolean;
   videoFps: number;
   videoWidth: number;
   videoHeight: number;
@@ -371,11 +374,13 @@ function InteractiveCvViewer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [records, setRecords] = useState<FrameRecord[]>([]);
-  const [videoSource, setVideoSource] = useState("");
+  const [proxyPath, setProxyPath] = useState("");
   const [viewerError, setViewerError] = useState<string | null>(null);
   const [currentFrame, setCurrentFrame] = useState<number | null>(null);
   const [showBoxes, setShowBoxes] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
+  const [showFlow, setShowFlow] = useState(false);
+  const [fps, setFps] = useState<number | null>(null);
 
   useEffect(() => {
     invoke<FrameRecord[]>("read_detections_jsonl", { path: detectionsPath })
@@ -395,13 +400,11 @@ function InteractiveCvViewer({
       path: videoPath,
       startSeconds: startOffsetSeconds,
       durationSeconds: durationSeconds,
+      fullVideo,
       onProgress,
     })
-      .then(async (path) => {
-        if (cancelled) return;
-        const bytes = await invoke<ArrayBuffer>("read_media_file", { path });
-        if (cancelled) return;
-        setVideoSource(URL.createObjectURL(new Blob([bytes], { type: "video/mp4" })));
+      .then((path) => {
+        if (!cancelled) setProxyPath(path);
       })
       .catch((err) => {
         if (!cancelled) setViewerError(String(err));
@@ -409,7 +412,28 @@ function InteractiveCvViewer({
     return () => {
       cancelled = true;
     };
-  }, [videoPath, startOffsetSeconds, durationSeconds]);
+  }, [videoPath, startOffsetSeconds, durationSeconds, fullVideo]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    let lastTime = -1;
+    let lastWall = performance.now();
+    const measure = () => {
+      const now = performance.now();
+      if (video.currentTime !== lastTime) {
+        const dt = (now - lastWall) / 1000;
+        if (dt > 0.05 && video.currentTime > lastTime) {
+          setFps(Math.round(((video.currentTime - lastTime) / dt) * 10) / 10);
+        }
+        lastTime = video.currentTime;
+        lastWall = now;
+      }
+      requestAnimationFrame(measure);
+    };
+    const raf = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(raf);
+  }, [proxyPath]);
 
   const frameIndex = useMemo(() => {
     const map = new Map<number, FrameRecord>();
@@ -442,17 +466,24 @@ function InteractiveCvViewer({
     if (!record) return;
     const scaleX = displayWidth / (videoWidth || 1);
     const scaleY = displayHeight / (videoHeight || 1);
+    const flowMagnitude = record.optical_flow_mean_px ?? 0;
     for (const box of record.vehicle_boxes) {
       const [x1, y1, x2, y2] = box.xyxy;
-      ctx.strokeStyle = "#00e6dc";
+      const strokeStyle = showFlow && flowMagnitude > 0.5 ? "#f97316" : "#00e6dc";
+      ctx.strokeStyle = strokeStyle;
       ctx.lineWidth = 2;
       ctx.strokeRect(x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY);
       if (showLabels) {
-        ctx.fillStyle = "#00e6dc";
+        ctx.fillStyle = strokeStyle;
         ctx.font = "13px sans-serif";
         const label = `${box.class_name} ${(box.confidence * 100).toFixed(0)}%${box.track_id != null ? ` #${box.track_id}` : ""}`;
         ctx.fillText(label, x1 * scaleX, Math.max(16, y1 * scaleY - 5));
       }
+    }
+    if (showFlow) {
+      ctx.fillStyle = "rgba(249, 115, 22, 0.9)";
+      ctx.font = "13px sans-serif";
+      ctx.fillText(`ROI flow ${flowMagnitude.toFixed(2)} px`, 12, displayHeight - 12);
     }
   }
 
@@ -475,7 +506,7 @@ function InteractiveCvViewer({
   useEffect(() => {
     drawOverlay();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFrame, showBoxes, showLabels, records, videoSource]);
+  }, [currentFrame, showBoxes, showLabels, showFlow, records, proxyPath]);
 
   function seekToFrame(frame: number) {
     const video = videoRef.current;
@@ -493,14 +524,14 @@ function InteractiveCvViewer({
   }
 
   if (viewerError) return <div className="media-error">Interactive viewer error: {viewerError}</div>;
-  if (!videoSource) return <div className="media-loading">Preparing seekable preview for the CV window...</div>;
+  if (!proxyPath) return <div className="media-loading">Preparing seekable preview for the CV window...</div>;
 
   return (
     <div className="interactive-viewer">
       <div className="interactive-stage">
         <video
           ref={videoRef}
-          src={videoSource}
+          src={convertFileSrc(proxyPath)}
           controls
           preload="auto"
           onTimeUpdate={onTimeUpdate}
@@ -518,7 +549,11 @@ function InteractiveCvViewer({
           <input type="checkbox" checked={showLabels} onChange={(event) => setShowLabels(event.target.checked)} />
           <span>Labels</span>
         </label>
-        <span className="interactive-frame-readout">Frame {currentFrame ?? "--"} · {frameNumbers.length} sampled frames</span>
+        <label className="toggle-row compact">
+          <input type="checkbox" checked={showFlow} onChange={(event) => setShowFlow(event.target.checked)} />
+          <span>Optical flow</span>
+        </label>
+        <span className="interactive-frame-readout">Frame {currentFrame ?? "--"} · {frameNumbers.length} sampled frames{fps != null ? ` · ${fps.toFixed(1)} fps` : ""}</span>
       </div>
       <div className="interactive-scrubber">
         <input
@@ -700,6 +735,26 @@ function App() {
       return points.reduce((sum, point) => sum + (Number.isFinite(point.altitude) ? point.altitude : 0), 0) / points.length;
     });
   }, [telemetryPoints]);
+
+  const frameObjectCounts = useMemo(() => {
+    if (!cvResult?.track_history) return [];
+    const counts = new Map<number, number>();
+    for (const items of Object.values(cvResult.track_history)) {
+      for (const item of items) {
+        counts.set(item.frame, (counts.get(item.frame) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()].sort((a, b) => a[0] - b[0]);
+  }, [cvResult]);
+
+  const objectCountBuckets = useMemo(() => {
+    if (frameObjectCounts.length === 0) return [];
+    const bucketSize = Math.max(1, Math.ceil(frameObjectCounts.length / 16));
+    return Array.from({ length: Math.ceil(frameObjectCounts.length / bucketSize) }, (_, index) => {
+      const slice = frameObjectCounts.slice(index * bucketSize, (index + 1) * bucketSize);
+      return slice.reduce((sum, [, count]) => sum + count, 0) / slice.length;
+    });
+  }, [frameObjectCounts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1175,6 +1230,7 @@ function App() {
                   detectionsPath={cvResult.detections_path}
                   startOffsetSeconds={cvResult.configuration?.start_offset_seconds ?? 0}
                   durationSeconds={cvResult.configuration?.duration_seconds ?? 10}
+                  fullVideo={cvResult.configuration?.full_video ?? false}
                   videoFps={cvResult.video_fps ?? 30}
                   videoWidth={cvResult.video_width ?? 3840}
                   videoHeight={cvResult.video_height ?? 2160}
@@ -1295,10 +1351,11 @@ function App() {
           <section className="panel workspace-panel">
             <div className="panel-header-row">
               <div>
-                <h3>Altitude profile</h3>
-                <p>Relative altitude sampled across the selected trajectory.</p>
+                <h3>Mission charts</h3>
+                <p>Altitude profile and per-frame object counts across the processed window.</p>
               </div>
             </div>
+            <h4 className="chart-section-title">Altitude profile</h4>
             {chartBuckets.length > 0 ? (
               <div className="bar-chart" aria-label="Relative altitude chart">
                 {chartBuckets.map((value, index) => {
@@ -1313,6 +1370,23 @@ function App() {
               <span>Samples <strong>{telemetryPoints.length.toLocaleString()}</strong></span>
               <span>Peak altitude <strong>{telemetryPoints.length ? `${Math.max(...telemetryPoints.map((point) => point.altitude)).toFixed(1)} m` : "--"}</strong></span>
               <span>Track points <strong>{mapPoints.length.toLocaleString()}</strong></span>
+            </div>
+
+            <h4 className="chart-section-title">Objects in scene</h4>
+            {objectCountBuckets.length > 0 ? (
+              <div className="bar-chart object-count-chart" aria-label="Objects in scene chart">
+                {objectCountBuckets.map((value, index) => {
+                  const maximum = Math.max(...objectCountBuckets, 1);
+                  return <div key={index} className="chart-bar object-count-bar" style={{ height: `${Math.max(3, (value / maximum) * 100)}%` }} title={`${value.toFixed(1)} objects`} />;
+                })}
+              </div>
+            ) : (
+              <div className="panel-empty">Run a CV preview to chart per-frame object counts.</div>
+            )}
+            <div className="chart-summary">
+              <span>Sampled frames <strong>{frameObjectCounts.length.toLocaleString()}</strong></span>
+              <span>Peak objects <strong>{frameObjectCounts.length ? `${Math.max(...frameObjectCounts.map(([, count]) => count))}` : "--"}</strong></span>
+              <span>Average objects <strong>{frameObjectCounts.length ? (frameObjectCounts.reduce((sum, [, count]) => sum + count, 0) / frameObjectCounts.length).toFixed(1) : "--"}</strong></span>
             </div>
           </section>
         )}

@@ -680,6 +680,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "frame_step": args.frame_step,
             "duration_seconds": args.duration,
             "start_offset_seconds": args.start_offset,
+            "full_video": getattr(args, "full_video", False),
             "roi_padding": args.roi_padding,
             "device": args.device,
         },

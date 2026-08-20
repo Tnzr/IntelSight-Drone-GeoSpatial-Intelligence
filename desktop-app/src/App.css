@@ -1384,3 +1384,13 @@ th {
   cursor: pointer;
   white-space: nowrap;
 }
+
+.chart-section-title {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.object-count-chart .object-count-bar {
+  background: #f59e0b;
+}
