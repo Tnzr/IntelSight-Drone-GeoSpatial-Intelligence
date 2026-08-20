@@ -194,3 +194,17 @@ Implement desktop-style mission visualization without redundant loading of large
 - Preview payload now carries video_fps/video_width/video_height.
 - New InteractiveCvViewer in the Video tab: seekable proxy of the processed window, canvas overlay drawing per-frame boxes/labels, frame scrubber, and "use current frame as start offset" to continue the next run from the chosen frame.
 - Live parameter re-rendering (optical-flow params) deferred to the streaming tracker phase; documented in plans/desktop-app-tab-requirements.md.
+
+## 2026-08-20 1080p preview, full-video processing, trajectory auto-match, inspector fixes
+
+1. Preview quality
+- Proxy previews and the CV overlay now render at 1080p (was 480p proxy / 960px overlay) with crf 18 so plates stay legible at medium distance.
+
+2. Full-video processing
+- Added a "Full video" clip-duration option (plus 60s/120s). `--full-video` processes from the start offset to end of file, so every entity along the trajectory gets geolocated instead of only the first 10-30s window.
+
+3. Trajectory auto-match
+- Selecting a video now auto-selects the matching SRT trajectory by stem and loads it for the map, removing the separate manual selection step.
+
+4. Interactive frame inspector
+- Render condition relaxed (no longer requires video_fps from an older payload); defaults applied; overlay draws immediately on detections load.

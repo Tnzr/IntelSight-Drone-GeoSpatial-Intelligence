@@ -120,6 +120,7 @@ type CvConfiguration = {
   confidence: number;
   frameStep: number;
   durationSeconds: number;
+  fullVideo: boolean;
   startOffsetSeconds: number;
   roiPadding: number;
   device: string;
@@ -378,7 +379,12 @@ function InteractiveCvViewer({
 
   useEffect(() => {
     invoke<FrameRecord[]>("read_detections_jsonl", { path: detectionsPath })
-      .then(setRecords)
+      .then((loaded) => {
+        setRecords(loaded);
+        if (loaded.length > 0) {
+          setCurrentFrame(loaded[0].frame);
+        }
+      })
       .catch((err) => setViewerError(String(err)));
   }, [detectionsPath]);
 
@@ -564,6 +570,7 @@ function App() {
       confidence: saved.confidence,
       frameStep: saved.frameStep,
       durationSeconds: saved.durationSeconds,
+      fullVideo: false,
       startOffsetSeconds: saved.startOffsetSeconds,
       roiPadding: saved.roiPadding,
       device: saved.device,
@@ -606,6 +613,7 @@ function App() {
       confidence: next.confidence,
       frameStep: next.frameStep,
       durationSeconds: next.durationSeconds,
+      fullVideo: next.durationSeconds === 0,
       startOffsetSeconds: next.startOffsetSeconds,
       roiPadding: next.roiPadding,
     }));
@@ -815,6 +823,19 @@ function App() {
       setStatus("Preview failed to load the selected annotation file.");
     }
   }
+
+  useEffect(() => {
+    if (!selectedMedia || !scanResult) return;
+    const videoStem = selectedMedia.replace(/\.[^.]+$/, "").split(/[\\/]/).pop();
+    const matching = scanResult.trajectory.find(
+      (item) => item.name.toLowerCase().endsWith(".srt") && item.name.replace(/\.[^.]+$/, "") === videoStem,
+    );
+    if (matching && matching.path !== selectedTrajectory) {
+      setSelectedTrajectory(matching.path);
+      loadPreview(matching.path, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMedia, scanResult]);
 
   async function handleBrowseFolder() {
     try {
@@ -1098,7 +1119,7 @@ function App() {
               <div className="cv-parameters">
                 <label>Confidence <output>{cvConfig.confidence.toFixed(2)}</output><input type="range" min="0.1" max="0.9" step="0.05" value={cvConfig.confidence} onChange={(event) => setCvConfig({ ...cvConfig, confidence: Number(event.target.value) })} /></label>
                 <label>Frame stride <input type="number" min="1" max="30" value={cvConfig.frameStep} onChange={(event) => setCvConfig({ ...cvConfig, frameStep: Number(event.target.value) })} /></label>
-                <label>Clip duration <select value={cvConfig.durationSeconds} onChange={(event) => setCvConfig({ ...cvConfig, durationSeconds: Number(event.target.value) })}><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option></select></label>
+                <label>Clip duration <select value={cvConfig.durationSeconds} onChange={(event) => { const value = Number(event.target.value); setCvConfig({ ...cvConfig, durationSeconds: value, fullVideo: value === 0 }); }}><option value="0">Full video</option><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option><option value="60">60 seconds</option><option value="120">120 seconds</option></select></label>
                 <label>Start offset <input type="number" min="0" max="600" step="5" value={cvConfig.startOffsetSeconds} onChange={(event) => setCvConfig({ ...cvConfig, startOffsetSeconds: Number(event.target.value) })} title="Seconds to skip at the start of the mission (launch footage)" /></label>
                 <label>ROI padding <input type="number" min="0" max="320" step="8" value={cvConfig.roiPadding} onChange={(event) => setCvConfig({ ...cvConfig, roiPadding: Number(event.target.value) })} /></label>
                 <label>Compute device <select value={cvConfig.device} onChange={(event) => setCvConfig({ ...cvConfig, device: event.target.value })}><option value="0">GPU 0</option><option value="1">GPU 1</option><option value="cpu">CPU</option></select></label>
@@ -1140,7 +1161,7 @@ function App() {
               </div>
             </div>
 
-            {cvResult && cvResult.video_fps && cvResult.detections_path && selectedMedia && (
+            {cvResult && cvResult.detections_path && selectedMedia && (
               <div className="interactive-viewer-section">
                 <div className="panel-header-row">
                   <div><h3>Interactive frame inspector</h3><p>Scrub through the processed window and overlay per-frame detections. Pick a frame to continue the next run from.</p></div>
@@ -1151,7 +1172,7 @@ function App() {
                   detectionsPath={cvResult.detections_path}
                   startOffsetSeconds={cvResult.configuration?.start_offset_seconds ?? 0}
                   durationSeconds={cvResult.configuration?.duration_seconds ?? 10}
-                  videoFps={cvResult.video_fps}
+                  videoFps={cvResult.video_fps ?? 30}
                   videoWidth={cvResult.video_width ?? 3840}
                   videoHeight={cvResult.video_height ?? 2160}
                   onUseFrameAsOffset={(offsetSeconds) => {
@@ -1378,7 +1399,7 @@ function App() {
                 </label>
                 <label>Clip duration
                   <select value={settings.durationSeconds} onChange={(event) => setSettings({ ...settings, durationSeconds: Number(event.target.value) })}>
-                    <option value="5">5 seconds</option><option value="10">10 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option>
+                    <option value="0">Full video</option><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option><option value="60">60 seconds</option><option value="120">120 seconds</option>
                   </select>
                 </label>
                 <label>Start offset

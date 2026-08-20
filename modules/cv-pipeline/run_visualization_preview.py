@@ -456,10 +456,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     else:
         source_start_frame = 0
     source_frame = source_start_frame
-    output_width = 960
+    output_width = min(1920, width)
     output_height = max(2, int(round(height * output_width / width)) // 2 * 2)
-    max_source_frames = source_start_frame + int(args.duration * fps)
-    total_processed_frames = max(1, (max_source_frames + args.frame_step - 1) // args.frame_step)
+    if getattr(args, "full_video", False):
+        max_source_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) or (source_start_frame + int(args.duration * fps))
+    else:
+        max_source_frames = source_start_frame + int(args.duration * fps)
+    total_processed_frames = max(1, (max_source_frames - source_start_frame + args.frame_step - 1) // args.frame_step)
     report_progress("initializing", 2, 100, "Opening video and loading YOLO model")
 
     ffmpeg = subprocess.Popen(
@@ -777,6 +780,8 @@ def main() -> None:
     parser.add_argument("--duration", type=float, default=10.0)
     parser.add_argument("--start-offset", type=float, default=10.0,
                         help="Seconds to skip at the start of the mission (launch footage).")
+    parser.add_argument("--full-video", action="store_true",
+                        help="Process the entire video from the start offset to the end.")
     parser.add_argument("--frame-step", type=int, default=5)
     parser.add_argument("--confidence", type=float, default=0.35)
     parser.add_argument("--roi-padding", type=int, default=48)

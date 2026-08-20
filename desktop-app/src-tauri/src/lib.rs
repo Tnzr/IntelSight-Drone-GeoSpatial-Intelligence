@@ -135,6 +135,7 @@ struct CvPreviewOptions {
     telemetry_path: Option<String>,
     duration_seconds: f64,
     start_offset_seconds: f64,
+    full_video: bool,
     frame_step: u32,
     confidence: f64,
     roi_padding: u32,
@@ -483,13 +484,13 @@ async fn prepare_media_preview(
                 "-map",
                 "0:v:0",
                 "-vf",
-                "scale=-2:480,fps=30",
+                "scale=-2:1080,fps=30",
                 "-c:v",
                 "libx264",
                 "-preset",
                 "veryfast",
                 "-crf",
-                "24",
+                "18",
                 "-pix_fmt",
                 "yuv420p",
                 "-an",
@@ -579,7 +580,7 @@ async fn run_cv_preview(
             .args(["--video", &options.video_path])
             .args(["--output-dir", output_dir.to_string_lossy().as_ref()])
             .args(["--model", model.to_string_lossy().as_ref()])
-            .args(["--duration", &options.duration_seconds.clamp(2.0, 30.0).to_string()])
+            .args(["--duration", &options.duration_seconds.clamp(2.0, 3600.0).to_string()])
             .args(["--start-offset", &options.start_offset_seconds.clamp(0.0, 600.0).to_string()])
             .args(["--frame-step", &options.frame_step.clamp(1, 30).to_string()])
             .args(["--confidence", &options.confidence.clamp(0.05, 0.95).to_string()])
@@ -591,6 +592,9 @@ async fn run_cv_preview(
         command.arg(if options.detections { "--detections" } else { "--no-detections" });
         command.arg(if options.optical_flow { "--optical-flow" } else { "--no-optical-flow" });
         command.arg(if options.reid { "--reid" } else { "--no-reid" });
+        if options.full_video {
+            command.arg("--full-video");
+        }
 
         report_progress(&on_progress, "initializing", 0, 100, "Loading model and video");
         let mut child = command
