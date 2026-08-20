@@ -141,3 +141,10 @@ data/flightrecords/** (gitignored media)
 - Workshop Lab delivered: `cv_pipeline_lab.ipynb` rebuilt as per-module workshop (builder: `scripts/build_workshop_lab.py`); `modules/cv-pipeline/export_lab_artifacts.py` generates 7 demo PNGs + manifest into `output/lab-artifacts/`; web-dashboard gained a "Workshop Lab" tab + `make lab` mode (AppTest-verified, no exceptions); Tauri app gained a Workshop Lab tab via new `list_lab_artifacts` Rust command (tsc + cargo check pass with fresh target dir; corrupted `desktop-app/src-tauri/target` removed).
 - Tests: 33/33 pass. Git commit left to the user (not committed; per commit policy).
 - Not yet done: Phase B CLI trim controls, plate model eval gate, carparts-seg footprint/color voting, FlagerPublix end-to-end rerun, Phase C tracker, Phase D PostGIS.
+
+### 2026-08-20 (evening) — CV preview external geolocation + identity history
+
+- Preview geolocation upgraded from proxy to ground-ray projection with ego heading + multi-observation intersection (`ground_ray_multi`, geo_spread_m); verified end-to-end on FlagerPublix 0130 with distinct meter-separated identity positions.
+- Tauri: start-offset trim control, maxZoom 22, latest/history map modes, per-identity observation history, crop fallback fix, geo_spread display.
+- Home clone (`~/IntelSight-Drone-GeoSpatial-Intelligence`) synced from workspace; `make desktop` verified; tsc + cargo check + 33/33 tests pass.
+- Remaining: plate/OCR feed from geotagged rear-view detections (Phase B), tracker module (Phase C), PostGIS (Phase D).

@@ -138,3 +138,42 @@ Implement desktop-style mission visualization without redundant loading of large
 - `make dashboard` was executed as smoke test.
 - Launch currently fails in this shell because no `mamba`, `conda`, `micromamba`, or `streamlit` command is available on PATH.
 - `scripts/run_web_dashboard.sh` was hardened with multi-runner fallback and explicit error reporting.
+
+## 2026-08-20 Workshop Lab and environment resolution fixes
+
+1. Workshop Lab page
+- Added `render_workshop_lab()` in `modules/web-dashboard/app.py` with a "Workshop Lab" tab and a `--lab` startup mode (`make lab`).
+- Renders per-module demo PNGs from `output/lab-artifacts/manifest.json` with a "Regenerate lab artifacts" button that runs `modules/cv-pipeline/export_lab_artifacts.py`.
+- Artifact generator produces: pipeline data-flow diagram, Rust parser telemetry, SRT telemetry, detection/plate-candidate views, sync+fusion integration, and optical-flow overlay (7 PNGs verified from real mission data).
+
+2. Workshop notebook
+- `modules/cv-pipeline/cv_pipeline_lab.ipynb` rebuilt as "IntelSight Workshop Lab" via `scripts/build_workshop_lab.py` (idempotent): per-module sections, integration visualizations, guided exercises, and lab-artifact export cells.
+
+3. Desktop app Lab tab
+- Added `list_lab_artifacts` Rust command and a "Workshop Lab" tab in the Tauri app that renders the exported artifacts via the existing binary media path (no uploads).
+
+4. Environment resolution fix
+- All `scripts/run_*.sh` now prefer `/home/tnzr/.local/share/mamba/envs/intelsight/bin/python` before mamba/conda fallbacks (previous chain hit a dangling micromamba symlink and anaconda3 conda without the intelsight env).
+- `make dashboard` verified: serves HTTP 200 on port 8501.
+- Model weights moved to `models/` (gitignored) with `resolve_checkpoint()` fallback in `run_cv_pipeline.py`; Tauri `run_cv_preview` model path updated.
+
+## 2026-08-20 CV preview external geolocation (ground-ray) and identity history
+
+1. Ray-based external geolocation in `modules/cv-pipeline/run_visualization_preview.py`
+- Replaced fixed-FOV image-plane approximation with per-observation ground-ray projection: SRT focal_len (35mm-equivalent -> pixel focal via 36mm frame), altitude standoff, and ego course-over-ground heading (derived from neighboring SRT GPS positions, since SRT has no attitude).
+- Track positions now aggregate trimmed ray intersections (`ground_ray_multi`, `ground_ray_single` modes) with `geo_spread_m` uncertainty; verified on FlagerPublix 0130: 22 identities with distinct positions (meters apart) instead of drone-stamped clusters.
+- `--start-offset` trim control (launch-footage skip) wired through Tauri `CvPreviewOptions.startOffsetSeconds` and a "Start offset" input in the Video workbench.
+- Representative identity crops now always persisted (`_largest_crop` fallback); payload includes per-track `track_history`; SQLite gains `geo_spread_m`.
+
+2. Map tab upgrades (Tauri app)
+- maxZoom 22 for meter-level identity separation; per-track observation history (dashed polyline + points) on identity selection; "Latest positions / Entire observation history" display mode; observation history list in the identity profile; position-spread metric in profile and tooltips.
+
+3. Home-clone sync
+- `~/IntelSight-Drone-GeoSpatial-Intelligence` code dirs (desktop-app, modules, scripts, models, tests, plans, Makefile, .gitignore) synced from the canonical workspace; stale root artifacts removed. `make desktop` verified to resolve there.
+
+## 2026-08-20 desktop app Settings tab and tab functional requirements
+
+1. Settings tab (Tauri desktop app)
+- New dedicated "settings" tab with CV workbench defaults (device, confidence, frame stride, clip duration, start offset, ROI padding), mission/map preferences (remember last mission root, default map display mode), and maintenance actions (clear recent missions, reset defaults).
+- Settings persist in localStorage (`intelsight.settings`) and apply to new workbench runs; the last mission root is remembered per scan and prefilled on startup when enabled.
+- New functional spec: `plans/desktop-app-tab-requirements.md` — per-tab requirements and improvement backlog (playback resolution presets, plate/OCR batch trigger, geofence overlays, multi-run aggregation, lab regeneration from the app).

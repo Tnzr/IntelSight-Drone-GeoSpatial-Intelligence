@@ -21,7 +21,7 @@ type ScanResult = {
 };
 
 type ScanState = "idle" | "scanning" | "success" | "empty" | "error";
-type DashboardTab = "overview" | "video" | "map" | "database" | "charts" | "lab";
+type DashboardTab = "overview" | "video" | "map" | "database" | "charts" | "lab" | "settings";
 
 type LabArtifact = {
   name: string;
@@ -117,12 +117,46 @@ type ProgressUpdate = {
 };
 
 const recentMissionsKey = "intelsight.recentMissions";
+const settingsKey = "intelsight.settings";
+
+type AppSettings = {
+  device: string;
+  confidence: number;
+  frameStep: number;
+  durationSeconds: number;
+  startOffsetSeconds: number;
+  roiPadding: number;
+  rememberMissionRoot: boolean;
+  lastMissionRoot: string;
+  defaultHistoryMode: "latest" | "history";
+};
+
+const defaultSettings: AppSettings = {
+  device: "0",
+  confidence: 0.35,
+  frameStep: 5,
+  durationSeconds: 10,
+  startOffsetSeconds: 10,
+  roiPadding: 48,
+  rememberMissionRoot: false,
+  lastMissionRoot: "",
+  defaultHistoryMode: "latest",
+};
 
 function readRecentMissions() {
   try {
     return JSON.parse(localStorage.getItem(recentMissionsKey) ?? "[]") as string[];
   } catch {
     return [];
+  }
+}
+
+function readSettings(): AppSettings {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(settingsKey) ?? "{}") as Partial<AppSettings>;
+    return { ...defaultSettings, ...parsed };
+  } catch {
+    return { ...defaultSettings };
   }
 }
 
@@ -274,17 +308,21 @@ function App() {
   const [selectedIdentityId, setSelectedIdentityId] = useState<number | null>(null);
   const [labArtifacts, setLabArtifacts] = useState<LabArtifact[]>([]);
   const [labError, setLabError] = useState<string | null>(null);
-  const [historyMode, setHistoryMode] = useState<"latest" | "history">("latest");
-  const [cvConfig, setCvConfig] = useState<CvConfiguration>({
-    detections: true,
-    opticalFlow: false,
-    reid: true,
-    confidence: 0.35,
-    frameStep: 5,
-    durationSeconds: 10,
-    startOffsetSeconds: 10,
-    roiPadding: 48,
-    device: "0",
+  const [settings, setSettings] = useState<AppSettings>(readSettings);
+  const [historyMode, setHistoryMode] = useState<"latest" | "history">(readSettings().defaultHistoryMode);
+  const [cvConfig, setCvConfig] = useState<CvConfiguration>(() => {
+    const saved = readSettings();
+    return {
+      detections: true,
+      opticalFlow: false,
+      reid: true,
+      confidence: saved.confidence,
+      frameStep: saved.frameStep,
+      durationSeconds: saved.durationSeconds,
+      startOffsetSeconds: saved.startOffsetSeconds,
+      roiPadding: saved.roiPadding,
+      device: saved.device,
+    };
   });
 
   const hasFiles = useMemo(
@@ -302,6 +340,51 @@ function App() {
   useEffect(() => {
     loadLabArtifacts();
   }, [loadLabArtifacts]);
+
+  useEffect(() => {
+    if (settings.rememberMissionRoot && settings.lastMissionRoot && !rootDir) {
+      setRootDir(settings.lastMissionRoot);
+      setStatus(`Restored mission root from settings: ${settings.lastMissionRoot}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function persistSettings(next: AppSettings) {
+    localStorage.setItem(settingsKey, JSON.stringify(next));
+    setSettings(next);
+  }
+
+  function applySettingsToWorkbench(next: AppSettings) {
+    setCvConfig((previous) => ({
+      ...previous,
+      device: next.device,
+      confidence: next.confidence,
+      frameStep: next.frameStep,
+      durationSeconds: next.durationSeconds,
+      startOffsetSeconds: next.startOffsetSeconds,
+      roiPadding: next.roiPadding,
+    }));
+    setHistoryMode(next.defaultHistoryMode);
+  }
+
+  function saveSettings() {
+    persistSettings(settings);
+    applySettingsToWorkbench(settings);
+    setStatus("Settings saved and applied to the workbench.");
+  }
+
+  function resetSettings() {
+    const reset = { ...defaultSettings };
+    persistSettings(reset);
+    applySettingsToWorkbench(reset);
+    setStatus("Settings reset to defaults.");
+  }
+
+  function clearRecentMissions() {
+    localStorage.removeItem(recentMissionsKey);
+    setRecentMissions([]);
+    setStatus("Recent missions cleared.");
+  }
   const canScan = rootDir.trim().length > 0 && scanState !== "scanning";
   const telemetryPoints = useMemo(
     () => preview
@@ -457,6 +540,7 @@ function App() {
       setPreview([]);
       setScannedRoot(targetRoot);
       rememberMission(targetRoot);
+      persistSettings({ ...settings, lastMissionRoot: targetRoot });
       setStatus(`Scanned ${result.trajectory.length} trajectory file(s), ${result.detections.length} detection file(s).`);
       setScanState("success");
       if (!Object.values(result).some((items) => items.length > 0)) {
@@ -674,7 +758,7 @@ function App() {
         </header>
 
         <nav className="view-tabs" aria-label="Mission views">
-          {(["overview", "video", "map", "database", "charts", "lab"] as DashboardTab[]).map((tab) => (
+          {(["overview", "video", "map", "database", "charts", "lab", "settings"] as DashboardTab[]).map((tab) => (
             <button
               key={tab}
               type="button"
@@ -1001,6 +1085,63 @@ function App() {
                 ))}
               </div>
             )}
+          </section>
+        )}
+
+        {activeTab === "settings" && (
+          <section className="panel workspace-panel">
+            <div className="panel-header-row">
+              <div><h3>Settings</h3><p>Local preferences for the CV workbench, mission intake, and map display. Stored in this browser profile (localStorage), not sent anywhere.</p></div>
+            </div>
+            <div className="settings-grid">
+              <div className="settings-group">
+                <h4>CV workbench defaults</h4>
+                <label>Compute device
+                  <select value={settings.device} onChange={(event) => setSettings({ ...settings, device: event.target.value })}>
+                    <option value="0">GPU 0</option>
+                    <option value="1">GPU 1</option>
+                    <option value="cpu">CPU</option>
+                  </select>
+                </label>
+                <label>Confidence <output>{settings.confidence.toFixed(2)}</output>
+                  <input type="range" min="0.1" max="0.9" step="0.05" value={settings.confidence} onChange={(event) => setSettings({ ...settings, confidence: Number(event.target.value) })} />
+                </label>
+                <label>Frame stride
+                  <input type="number" min="1" max="30" value={settings.frameStep} onChange={(event) => setSettings({ ...settings, frameStep: Number(event.target.value) })} />
+                </label>
+                <label>Clip duration
+                  <select value={settings.durationSeconds} onChange={(event) => setSettings({ ...settings, durationSeconds: Number(event.target.value) })}>
+                    <option value="5">5 seconds</option><option value="10">10 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option>
+                  </select>
+                </label>
+                <label>Start offset
+                  <input type="number" min="0" max="600" step="5" value={settings.startOffsetSeconds} onChange={(event) => setSettings({ ...settings, startOffsetSeconds: Number(event.target.value) })} title="Seconds to skip at the start of the mission (launch footage)" />
+                </label>
+                <label>ROI padding
+                  <input type="number" min="0" max="320" step="8" value={settings.roiPadding} onChange={(event) => setSettings({ ...settings, roiPadding: Number(event.target.value) })} />
+                </label>
+              </div>
+              <div className="settings-group">
+                <h4>Mission and map</h4>
+                <label className="settings-checkbox">
+                  <input type="checkbox" checked={settings.rememberMissionRoot} onChange={(event) => setSettings({ ...settings, rememberMissionRoot: event.target.checked })} />
+                  Remember last mission root on startup
+                </label>
+                <div className="settings-path" title={settings.lastMissionRoot || undefined}>{settings.lastMissionRoot || "No mission root remembered yet"}</div>
+                <label>Default map display
+                  <select value={settings.defaultHistoryMode} onChange={(event) => setSettings({ ...settings, defaultHistoryMode: event.target.value as "latest" | "history" })}>
+                    <option value="latest">Latest positions</option>
+                    <option value="history">Entire observation history</option>
+                  </select>
+                </label>
+                <button type="button" onClick={clearRecentMissions}>Clear recent missions</button>
+              </div>
+            </div>
+            <div className="settings-actions">
+              <button type="button" className="primary" onClick={saveSettings}>Save settings</button>
+              <button type="button" onClick={resetSettings}>Reset to defaults</button>
+              <span className="settings-note">Changes apply to new workbench runs; the current session keeps its loaded mission.</span>
+            </div>
           </section>
         )}
 

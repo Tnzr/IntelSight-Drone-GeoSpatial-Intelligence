@@ -1,0 +1,145 @@
+---
+references:
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/desktop-app/src-tauri/b\
+    uild.rs"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/desktop-app/src-tauri/s\
+    rc/lib.rs"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/desktop-app/src-tauri/s\
+    rc/main.rs"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/desktop-app/src/App.tsx"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/desktop-app/src/main.ts\
+    x"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/desktop-app/src/vite-en\
+    v.d.ts"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/desktop-app/vite.config\
+    .ts"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/cv-pipeline/bui\
+    ld_detection_report.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/cv-pipeline/exp\
+    ort_lab_artifacts.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/cv-pipeline/fus\
+    e_plate_observations.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/cv-pipeline/lic\
+    ense_plate_service.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/cv-pipeline/ren\
+    der_overlay_video.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/cv-pipeline/ren\
+    der_side_by_side_compare.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/cv-pipeline/run\
+    _cv_pipeline.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/cv-pipeline/run\
+    _visualization_preview.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/cv-pipeline/spa\
+    tial_feature_matching.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/cv-pipeline/syn\
+    c_detections_with_srt.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/flight-visualiz\
+    er/analyze_bottlenecks.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/flight-visualiz\
+    er/build_trajectory_dashboard.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/flight-visualiz\
+    er/parse_dji_srt.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/flight-visualiz\
+    er/render_map.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/flightrecord-pa\
+    rser/src/main.rs"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/web-dashboard/a\
+    pp.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/modules/web-dashboard/s\
+    tore.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/scripts/build_workshop_\
+    lab.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/scripts/run_benchmark_m\
+    atrix.sh"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/scripts/run_desktop_app\
+    .sh"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/scripts/run_flightrecor\
+    d_pipeline.sh"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/scripts/run_lp_geospati\
+    al_pipeline.sh"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/scripts/run_srt_dashboa\
+    rd.sh"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/scripts/run_web_dashboa\
+    rd.sh"
+  - "File: /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/tests/__init__.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/tests/test_license_plat\
+    e_service.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/tests/test_notebook_mot\
+    ion_consistency.py"
+  - "File:
+    /home/tnzr/IntelSight-Drone-GeoSpatial-Intelligence/tests/test_spatial_feat\
+    ure_matching.py"
+generationTime: 2026-08-20T20:37:59.944Z
+---
+flowchart TD
+    A["Build/Launch Entry"] --> B["Rust Entrypoints: build.rs -> main.rs -> desktop_app_lib::run()"]
+    B --> C["Tauri Builder Registers Commands + Plugins"]
+    C --> D["React Entrypoint: main.tsx Mounts App.tsx"]
+    D --> E{"User Action?"}
+
+    E -->|Scan Mission| F["invoke('scan_directory') with Progress Channel"]
+    F --> G{"Directory Exists + Is Directory?"}
+    G -->|No| H["Return Error State to UI"]
+    G -->|Yes| I["WalkDir Loop: Classify Files into trajectory/detections/summary/media"]
+    I --> J["MissionScanResult Sorted + Returned"]
+    J --> K{"Selected Media Is Video?"}
+
+    K -->|No| L["Direct Media Preview / Annotation Read"]
+    K -->|Yes| M["invoke('prepare_media_preview'): ffmpeg Transcode + Cache + Progress"]
+    M --> N{"Run CV Preview Requested?"}
+    N -->|No| L
+    N -->|Yes| O["invoke('run_cv_preview'): validate repo/env/model -> spawn Python preview process"]
+    O --> P["Parse JSON Progress + Final Payload"]
+    P --> Q[("Persist Outputs: SQLite + JSON + Overlay Video")]
+    Q --> R["UI Tabs Consume Results: Map / Database / Video / Lab"]
+
+    E -->|Batch Pipeline Scripts| S["run_lp_geospatial_pipeline.sh Orchestration"]
+    S --> T[["run_cv_pipeline.py" ]]
+    T --> U[["sync_detections_with_srt.py" ]]
+    U --> V[["fuse_plate_observations.py" ]]
+    V --> W[["build_detection_report.py" ]]
+    W --> X[["render_overlay_video.py" ]]
+    X --> Q
+
+    E -->|Web Review| Y["web-dashboard/app.py Load Workspace/Upload/Cache"]
+    Y --> Z{"Cached Mission Selected?"}
+    Z -->|Yes| AA[("Read mission_digest.sqlite3 via store.py")]
+    Z -->|No| AB["Parse Trajectory + Detections + Optional Summary"]
+    AA --> AC["Filter + 2D/3D Visualize + Video Preview + Lab Artifacts"]
+    AB --> AC
+
+    E -->|Quality Checks| AD["tests/: unit tests for parsing, CV helpers, flow logic"]
+    AD --> AE["Validate outputs + regressions"]
