@@ -371,7 +371,7 @@ function InteractiveCvViewer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [records, setRecords] = useState<FrameRecord[]>([]);
-  const [proxyPath, setProxyPath] = useState("");
+  const [videoSource, setVideoSource] = useState("");
   const [viewerError, setViewerError] = useState<string | null>(null);
   const [currentFrame, setCurrentFrame] = useState<number | null>(null);
   const [showBoxes, setShowBoxes] = useState(true);
@@ -397,8 +397,11 @@ function InteractiveCvViewer({
       durationSeconds: durationSeconds,
       onProgress,
     })
-      .then((path) => {
-        if (!cancelled) setProxyPath(path);
+      .then(async (path) => {
+        if (cancelled) return;
+        const bytes = await invoke<ArrayBuffer>("read_media_file", { path });
+        if (cancelled) return;
+        setVideoSource(URL.createObjectURL(new Blob([bytes], { type: "video/mp4" })));
       })
       .catch((err) => {
         if (!cancelled) setViewerError(String(err));
@@ -472,7 +475,7 @@ function InteractiveCvViewer({
   useEffect(() => {
     drawOverlay();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFrame, showBoxes, showLabels, records, proxyPath]);
+  }, [currentFrame, showBoxes, showLabels, records, videoSource]);
 
   function seekToFrame(frame: number) {
     const video = videoRef.current;
@@ -490,14 +493,14 @@ function InteractiveCvViewer({
   }
 
   if (viewerError) return <div className="media-error">Interactive viewer error: {viewerError}</div>;
-  if (!proxyPath) return <div className="media-loading">Preparing seekable preview for the CV window...</div>;
+  if (!videoSource) return <div className="media-loading">Preparing seekable preview for the CV window...</div>;
 
   return (
     <div className="interactive-viewer">
       <div className="interactive-stage">
         <video
           ref={videoRef}
-          src={convertFileSrc(proxyPath)}
+          src={videoSource}
           controls
           preload="auto"
           onTimeUpdate={onTimeUpdate}

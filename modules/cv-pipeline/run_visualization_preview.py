@@ -230,8 +230,9 @@ def telemetry_for_frame(records: list[dict[str, Any]], frame: int, fps: float) -
         return {}
     if frame <= 0:
         return records[0]
-    # DJI SRT subtitle blocks arrive at ~2 Hz; map video frame time onto block index.
-    block_index = min(len(records) - 1, max(0, int(round(frame / max(1.0, fps) * 2.0)) - 1))
+    # DJI SRT subtitle blocks arrive at ~60 Hz (one per video frame), so the record
+    # index maps 1:1 onto the video frame number. Clamp to the available range.
+    block_index = min(len(records) - 1, max(0, int(frame)))
     return records[block_index]
 
 
@@ -240,12 +241,14 @@ def attach_ego_headings(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     Derived from the neighboring GPS positions because the SRT stream carries no
     camera/aircraft attitude. Nadir-aligned imagery is assumed; heading rotates the
-    image plane in the ground frame.
+    image plane in the ground frame. The window spans ~0.5 s (30 records at ~60 Hz)
+    so GPS updates (~5 Hz) produce a stable course instead of noise.
     """
+    window = 30
     enriched = [dict(record) for record in records]
     for index, record in enumerate(enriched):
-        before = enriched[max(0, index - 2)]
-        after = enriched[min(len(enriched) - 1, index + 2)]
+        before = enriched[max(0, index - window)]
+        after = enriched[min(len(enriched) - 1, index + window)]
         latitude_delta = (after["latitude"] or before["latitude"] or 0) - (before["latitude"] or after["latitude"] or 0)
         longitude_delta = (after["longitude"] or before["longitude"] or 0) - (before["longitude"] or after["longitude"] or 0)
         if latitude_delta == 0 and longitude_delta == 0:

@@ -208,3 +208,12 @@ Implement desktop-style mission visualization without redundant loading of large
 
 4. Interactive frame inspector
 - Render condition relaxed (no longer requires video_fps from an older payload); defaults applied; overlay draws immediately on detections load.
+
+## 2026-08-20 SRT telemetry rate fix (root cause of start-only geolocation) and inspector video fix
+
+1. Geolocation root cause
+- DJI SRT subtitle blocks arrive at ~60 Hz (one per video frame), not 2 Hz as previously assumed. `telemetry_for_frame` was mapping every video frame to a block index ~30x too small, so all detections received telemetry from the first few seconds and clustered at the trajectory start.
+- Fixed to a 1:1 frame->record mapping; ego heading window widened to ~0.5 s (30 records) so GPS-derived course is stable. Verified: a clip at 60 s now geolocates objects offset from the drone's 60 s position, not the launch point.
+
+2. Interactive frame inspector video
+- Replaced `convertFileSrc` (which could not reach the app cache dir) with the proven `read_media_file` + Blob URL path used by the overlay player, so the inspector video renders instead of a black unplayable frame.
