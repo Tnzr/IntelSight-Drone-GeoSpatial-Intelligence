@@ -19,17 +19,19 @@ Status legend: [x] implemented · [~] partial · [ ] planned
 ### Video — CV workbench [x]
 - [x] Media selection restricted to video files from the scan.
 - [x] SRT telemetry auto-match by stem.
-- [x] Cached 10s H.264 proxy preview (ffmpeg, app cache dir).
+- [x] Cached H.264 proxy preview (ffmpeg, app cache dir) covering the configured CV window (start offset + duration).
 - [x] CV preview layers: detections, ROI optical flow, Re-ID matches; confidence, frame stride, clip duration, ROI padding, device.
 - [x] Start offset trim control (launch-footage skip, default 10s).
 - [x] Run manifest: rendered layers, detections JSONL path, SQLite database path.
+- [x] Auto-switch to the Video tab and refresh the overlay + interactive inspector after a CV run completes (run-counter remount, so overwritten artifacts are reloaded).
+- [x] Interactive frame inspector: seekable proxy of the CV window, canvas overlay drawing per-frame detections (boxes/labels), frame scrubber, and "use current frame as start offset" to continue the next run from a chosen frame.
+- [ ] Live parameter adjustment (optical-flow winsize/levels, ROI padding) with immediate re-render — belongs with the streaming tracker rebuild (Phase C).
 - [ ] Playback resolution presets (original / 1080p / 720p cached) — parity with web-dashboard.
-- [ ] One-click rerun with same configuration (persist last run config).
 - [ ] Plate/OCR pass trigger: feed geotagged detections (rear views included) into the plate detection + OCR batch path and merge results into the identity database.
 
 ### Map — identity map [x]
 - [x] Leaflet map over SRT trajectory polyline; identities as markers from ground-ray geolocation.
-- [x] maxZoom 22 for meter-level identity separation.
+- [x] maxZoom 22 with `maxNativeZoom 19` tile upscaling (OSM serves tiles only to zoom 19; beyond that the raw tiles are blank).
 - [x] Display modes: "Latest positions" vs "Entire observation history".
 - [x] Selecting an identity draws its observation path (dashed) + history points and opens the profile panel.
 - [x] Identity profile: representative ROI crop, sightings, frame span, confidence, Re-ID score, ORB matches, position, position spread, position model, plate status, observation history list.
@@ -38,6 +40,7 @@ Status legend: [x] implemented · [~] partial · [ ] planned
 
 ### Database — persisted objects [x]
 - [x] Session object table from the current CV run (SQLite-backed payload).
+- [x] Split view: object table (left) with click-to-select rows and the identity profile panel (right) reusing the Map tab's profile component.
 - [x] Database path disclosure for provenance.
 - [ ] Multi-run aggregation view: merge identities across runs/videos (same mission, different clips).
 - [ ] Plate history lookup by plate text across missions (depends on plate/OCR pass and PostGIS ingestion).

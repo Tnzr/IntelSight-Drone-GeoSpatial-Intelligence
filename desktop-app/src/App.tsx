@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
@@ -84,6 +84,9 @@ type CvPreviewResult = {
   observation_count: number;
   objects: GeolocatedObject[];
   track_history?: Record<string, GeolocatedObservation[]>;
+  video_fps?: number;
+  video_width?: number;
+  video_height?: number;
   configuration?: {
     detections: boolean;
     optical_flow: boolean;
@@ -95,6 +98,19 @@ type CvPreviewResult = {
     roi_padding: number;
     device: string;
   };
+};
+
+type FrameRecord = {
+  frame: number;
+  vehicle_boxes: Array<{
+    xyxy: number[];
+    class_name: string;
+    confidence: number;
+    track_id?: number;
+  }>;
+  optical_flow_mean_px: number;
+  local_feature_matches?: Record<string, number>;
+  telemetry?: Record<string, unknown>;
 };
 
 type CvConfiguration = {
@@ -283,6 +299,234 @@ function LabImage({ artifact }: { artifact: LabArtifact }) {
   return <img className="lab-artifact-image" src={source} alt={artifact.name} />;
 }
 
+type PositionedObservation = GeolocatedObservation & { latitude: number; longitude: number };
+
+function IdentityProfile({
+  identity,
+  history,
+  onBack,
+  emptyHint,
+}: {
+  identity: (GeolocatedObject & { latitude: number; longitude: number }) | null;
+  history: PositionedObservation[];
+  onBack: () => void;
+  emptyHint: string;
+}) {
+  if (!identity) {
+    return <div className="identity-profile-empty"><strong>Select an identity</strong><span>{emptyHint}</span></div>;
+  }
+  return (
+    <>
+      <div className="identity-profile-heading"><span>Identity profile</span><strong>#{identity.track_id}</strong></div>
+      {identity.representative_crop_path ? <img src={convertFileSrc(identity.representative_crop_path)} alt={`Representative ROI for identity ${identity.track_id}`} /> : <div className="identity-crop-empty">No representative ROI</div>}
+      <h4>{identity.class_name}</h4>
+      <dl>
+        <div><dt>Sightings</dt><dd>{identity.observations}</dd></div>
+        <div><dt>Frames</dt><dd>{identity.first_frame}–{identity.last_frame}</dd></div>
+        <div><dt>Detection confidence</dt><dd>{Math.round(identity.confidence * 100)}%</dd></div>
+        <div><dt>Re-ID score</dt><dd>{Math.round((identity.identity_score_avg ?? 0) * 100)}%</dd></div>
+        <div><dt>ORB matches</dt><dd>{(identity.local_feature_matches_avg ?? 0).toFixed(1)} avg · {identity.local_feature_matches_max ?? 0} max</dd></div>
+        <div><dt>Geo locality</dt><dd>{identity.latitude.toFixed(6)}, {identity.longitude.toFixed(6)}</dd></div>
+        <div><dt>Position spread</dt><dd>{identity.geo_spread_m != null ? `${identity.geo_spread_m.toFixed(2)} m` : "--"}</dd></div>
+        <div><dt>Position model</dt><dd>{identity.geolocation_mode.replace(/_/g, " ")}</dd></div>
+        <div><dt>License plate</dt><dd>{identity.plate_text ?? (identity.plate_status === "not_run" ? "Not run" : "Unavailable")}</dd></div>
+      </dl>
+      <div className="identity-history-heading"><span>Observation history</span><button type="button" onClick={onBack}>Back to all</button></div>
+      {history.length > 0 ? (
+        <ul className="identity-history-list">
+          {[...history].slice(-12).reverse().map((item) => (
+            <li key={item.frame}>
+              <span>frame {item.frame}</span>
+              <span>{item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="identity-history-empty">No geotagged observations for this identity.</div>
+      )}
+    </>
+  );
+}
+
+function InteractiveCvViewer({
+  videoPath,
+  detectionsPath,
+  startOffsetSeconds,
+  durationSeconds,
+  videoFps,
+  videoWidth,
+  videoHeight,
+  onUseFrameAsOffset,
+}: {
+  videoPath: string;
+  detectionsPath: string;
+  startOffsetSeconds: number;
+  durationSeconds: number;
+  videoFps: number;
+  videoWidth: number;
+  videoHeight: number;
+  onUseFrameAsOffset: (offsetSeconds: number) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [records, setRecords] = useState<FrameRecord[]>([]);
+  const [proxyPath, setProxyPath] = useState("");
+  const [viewerError, setViewerError] = useState<string | null>(null);
+  const [currentFrame, setCurrentFrame] = useState<number | null>(null);
+  const [showBoxes, setShowBoxes] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
+
+  useEffect(() => {
+    invoke<FrameRecord[]>("read_detections_jsonl", { path: detectionsPath })
+      .then(setRecords)
+      .catch((err) => setViewerError(String(err)));
+  }, [detectionsPath]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const onProgress = new Channel<ProgressUpdate>();
+    invoke<string>("prepare_media_preview", {
+      path: videoPath,
+      startSeconds: startOffsetSeconds,
+      durationSeconds: durationSeconds,
+      onProgress,
+    })
+      .then((path) => {
+        if (!cancelled) setProxyPath(path);
+      })
+      .catch((err) => {
+        if (!cancelled) setViewerError(String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [videoPath, startOffsetSeconds, durationSeconds]);
+
+  const frameIndex = useMemo(() => {
+    const map = new Map<number, FrameRecord>();
+    for (const record of records) map.set(record.frame, record);
+    return map;
+  }, [records]);
+
+  const frameNumbers = useMemo(
+    () => records.map((record) => record.frame).sort((a, b) => a - b),
+    [records],
+  );
+
+  const minFrame = frameNumbers[0] ?? 0;
+  const maxFrame = frameNumbers[frameNumbers.length - 1] ?? 0;
+
+  function drawOverlay() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    const displayWidth = video.clientWidth;
+    const displayHeight = video.clientHeight;
+    if (displayWidth === 0 || displayHeight === 0) return;
+    if (canvas.width !== displayWidth) canvas.width = displayWidth;
+    if (canvas.height !== displayHeight) canvas.height = displayHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
+    if (!showBoxes || currentFrame == null) return;
+    const record = frameIndex.get(currentFrame);
+    if (!record) return;
+    const scaleX = displayWidth / (videoWidth || 1);
+    const scaleY = displayHeight / (videoHeight || 1);
+    for (const box of record.vehicle_boxes) {
+      const [x1, y1, x2, y2] = box.xyxy;
+      ctx.strokeStyle = "#00e6dc";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY);
+      if (showLabels) {
+        ctx.fillStyle = "#00e6dc";
+        ctx.font = "13px sans-serif";
+        const label = `${box.class_name} ${(box.confidence * 100).toFixed(0)}%${box.track_id != null ? ` #${box.track_id}` : ""}`;
+        ctx.fillText(label, x1 * scaleX, Math.max(16, y1 * scaleY - 5));
+      }
+    }
+  }
+
+  function onTimeUpdate() {
+    const video = videoRef.current;
+    if (!video || frameNumbers.length === 0) return;
+    const originalFrame = Math.round((startOffsetSeconds + video.currentTime) * videoFps);
+    let nearest = frameNumbers[0];
+    let best = Number.POSITIVE_INFINITY;
+    for (const frame of frameNumbers) {
+      const distance = Math.abs(frame - originalFrame);
+      if (distance < best) {
+        best = distance;
+        nearest = frame;
+      }
+    }
+    setCurrentFrame(nearest);
+  }
+
+  useEffect(() => {
+    drawOverlay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFrame, showBoxes, showLabels, records, proxyPath]);
+
+  function seekToFrame(frame: number) {
+    const video = videoRef.current;
+    if (!video || videoFps <= 0) return;
+    const proxyTime = frame / videoFps - startOffsetSeconds;
+    video.currentTime = Math.max(0, proxyTime);
+    setCurrentFrame(frame);
+  }
+
+  function useCurrentFrameAsOffset() {
+    const video = videoRef.current;
+    if (!video) return;
+    const absoluteSeconds = startOffsetSeconds + video.currentTime;
+    onUseFrameAsOffset(Math.max(0, Math.round(absoluteSeconds)));
+  }
+
+  if (viewerError) return <div className="media-error">Interactive viewer error: {viewerError}</div>;
+  if (!proxyPath) return <div className="media-loading">Preparing seekable preview for the CV window...</div>;
+
+  return (
+    <div className="interactive-viewer">
+      <div className="interactive-stage">
+        <video
+          ref={videoRef}
+          src={convertFileSrc(proxyPath)}
+          controls
+          preload="auto"
+          onTimeUpdate={onTimeUpdate}
+          onLoadedMetadata={drawOverlay}
+          onSeeked={onTimeUpdate}
+        />
+        <canvas ref={canvasRef} className="interactive-canvas" />
+      </div>
+      <div className="interactive-controls">
+        <label className="toggle-row compact">
+          <input type="checkbox" checked={showBoxes} onChange={(event) => setShowBoxes(event.target.checked)} />
+          <span>Boxes</span>
+        </label>
+        <label className="toggle-row compact">
+          <input type="checkbox" checked={showLabels} onChange={(event) => setShowLabels(event.target.checked)} />
+          <span>Labels</span>
+        </label>
+        <span className="interactive-frame-readout">Frame {currentFrame ?? "--"} · {frameNumbers.length} sampled frames</span>
+      </div>
+      <div className="interactive-scrubber">
+        <input
+          type="range"
+          min={minFrame}
+          max={maxFrame}
+          step={1}
+          value={currentFrame ?? minFrame}
+          onChange={(event) => seekToFrame(Number(event.target.value))}
+          aria-label="Frame scrubber"
+        />
+        <button type="button" onClick={useCurrentFrameAsOffset}>Use current frame as start offset</button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [rootDir, setRootDir] = useState(() => readRecentMissions()[0] ?? "");
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
@@ -300,6 +544,7 @@ function App() {
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [cvState, setCvState] = useState<"idle" | "running" | "ready" | "error">("idle");
+  const [cvRunCount, setCvRunCount] = useState(0);
   const [cvError, setCvError] = useState<string | null>(null);
   const [cvResult, setCvResult] = useState<CvPreviewResult | null>(null);
   const [scanProgress, setScanProgress] = useState<ProgressUpdate | null>(null);
@@ -620,7 +865,10 @@ function App() {
         onProgress,
       });
       setCvResult(result);
+      setCvRunCount((count) => count + 1);
       setCvState("ready");
+      setSelectedIdentityId(null);
+      setActiveTab("video");
       setStatus(`CV preview ready: ${result.objects.length} tracked object(s), ${result.observation_count} observation(s).`);
     } catch (err) {
       setCvError(String(err));
@@ -888,9 +1136,32 @@ function App() {
                 <span>Configured CV overlay</span>
                 <strong>{cvResult ? cvResult.overlay_path.split(/[\\/]/).pop() : "No visualization run yet"}</strong>
                 {cvState === "running" && <p>Generating the selected visualization layers...</p>}
-                {cvResult ? <VideoPlayer path={cvResult.overlay_path} label="CV overlay" /> : <p>Configure the pipeline above, then run a bounded preview.</p>}
+                {cvResult ? <VideoPlayer key={`overlay-${cvRunCount}`} path={cvResult.overlay_path} label="CV overlay" /> : <p>Configure the pipeline above, then run a bounded preview.</p>}
               </div>
             </div>
+
+            {cvResult && cvResult.video_fps && cvResult.detections_path && selectedMedia && (
+              <div className="interactive-viewer-section">
+                <div className="panel-header-row">
+                  <div><h3>Interactive frame inspector</h3><p>Scrub through the processed window and overlay per-frame detections. Pick a frame to continue the next run from.</p></div>
+                </div>
+                <InteractiveCvViewer
+                  key={`inspector-${cvRunCount}`}
+                  videoPath={selectedMedia}
+                  detectionsPath={cvResult.detections_path}
+                  startOffsetSeconds={cvResult.configuration?.start_offset_seconds ?? 0}
+                  durationSeconds={cvResult.configuration?.duration_seconds ?? 10}
+                  videoFps={cvResult.video_fps}
+                  videoWidth={cvResult.video_width ?? 3840}
+                  videoHeight={cvResult.video_height ?? 2160}
+                  onUseFrameAsOffset={(offsetSeconds) => {
+                    setCvConfig((previous) => ({ ...previous, startOffsetSeconds: offsetSeconds }));
+                    setStatus(`Start offset set to ${offsetSeconds}s. Run CV preview again to reprocess from this frame.`);
+                    setActiveTab("video");
+                  }}
+                />
+              </div>
+            )}
 
             {cvResult && (
               <div className="run-manifest">
@@ -941,7 +1212,7 @@ function App() {
               <div className="identity-map-layout">
                 <div className="map-canvas">
                   <MapContainer center={[mapPoints[0]?.latitude ?? geolocatedObjects[0].latitude, mapPoints[0]?.longitude ?? geolocatedObjects[0].longitude]} zoom={18} maxZoom={22} scrollWheelZoom className="leaflet-map">
-                    <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxNativeZoom={19} maxZoom={22} />
                     <FitMapBounds bounds={mapBounds} />
                     {mapPoints.length > 1 && <Polyline positions={mapPoints.map((point) => [point.latitude, point.longitude])} pathOptions={{ color: "#0284c7", weight: 4 }} />}
                     {selectedIdentityHistory.length > 1 && (
@@ -982,37 +1253,12 @@ function App() {
                   <div className="map-legend"><span><i className="trajectory-line" /> GPS trajectory</span><span><i className="object-dot" /> Identity position (ground-ray)</span><span><i className="history-dot" /> Observation history</span></div>
                 </div>
                 <aside className="identity-profile" aria-live="polite">
-                  {selectedIdentity ? (
-                    <>
-                      <div className="identity-profile-heading"><span>Identity profile</span><strong>#{selectedIdentity.track_id}</strong></div>
-                      {selectedIdentity.representative_crop_path ? <img src={convertFileSrc(selectedIdentity.representative_crop_path)} alt={`Representative ROI for identity ${selectedIdentity.track_id}`} /> : <div className="identity-crop-empty">No representative ROI</div>}
-                      <h4>{selectedIdentity.class_name}</h4>
-                      <dl>
-                        <div><dt>Sightings</dt><dd>{selectedIdentity.observations}</dd></div>
-                        <div><dt>Frames</dt><dd>{selectedIdentity.first_frame}–{selectedIdentity.last_frame}</dd></div>
-                        <div><dt>Detection confidence</dt><dd>{Math.round(selectedIdentity.confidence * 100)}%</dd></div>
-                        <div><dt>Re-ID score</dt><dd>{Math.round((selectedIdentity.identity_score_avg ?? 0) * 100)}%</dd></div>
-                        <div><dt>ORB matches</dt><dd>{(selectedIdentity.local_feature_matches_avg ?? 0).toFixed(1)} avg · {selectedIdentity.local_feature_matches_max ?? 0} max</dd></div>
-                        <div><dt>Geo locality</dt><dd>{selectedIdentity.latitude.toFixed(6)}, {selectedIdentity.longitude.toFixed(6)}</dd></div>
-                        <div><dt>Position spread</dt><dd>{selectedIdentity.geo_spread_m != null ? `${selectedIdentity.geo_spread_m.toFixed(2)} m` : "--"}</dd></div>
-                        <div><dt>Position model</dt><dd>{selectedIdentity.geolocation_mode.replace(/_/g, " ")}</dd></div>
-                        <div><dt>License plate</dt><dd>{selectedIdentity.plate_text ?? (selectedIdentity.plate_status === "not_run" ? "Not run" : "Unavailable")}</dd></div>
-                      </dl>
-                      <div className="identity-history-heading"><span>Observation history</span><button type="button" onClick={() => setSelectedIdentityId(null)}>Back to all</button></div>
-                      {selectedIdentityHistory.length > 0 ? (
-                        <ul className="identity-history-list">
-                          {[...selectedIdentityHistory].slice(-12).reverse().map((item) => (
-                            <li key={item.frame}>
-                              <span>frame {item.frame}</span>
-                              <span>{item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="identity-history-empty">No geotagged observations for this identity.</div>
-                      )}
-                    </>
-                  ) : <div className="identity-profile-empty"><strong>Select an identity</strong><span>Click a pink map point to inspect its registered ROI and matching evidence.</span></div>}
+                  <IdentityProfile
+                    identity={selectedIdentity}
+                    history={selectedIdentityHistory}
+                    onBack={() => setSelectedIdentityId(null)}
+                    emptyHint="Click a pink map point to inspect its registered ROI and matching evidence."
+                  />
                 </aside>
               </div>
             ) : (
@@ -1049,13 +1295,34 @@ function App() {
 
         {activeTab === "database" && (
           <section className="panel preview-panel">
-            <div className="panel-header-row"><div><h3>Geolocated object database</h3><p>Recognized and tracked objects persisted from CV preview runs.</p></div>{cvResult && <strong className="data-badge">SQLite · {cvResult.objects.length} objects</strong>}</div>
-            {cvResult?.objects.length ? <>
-              <div className="database-path" title={cvResult.database_path}>{cvResult.database_path}</div>
-              <div className="table-wrap"><table><thead><tr><th>Track</th><th>Class</th><th>Confidence</th><th>Frames</th><th>Observations</th><th>Latitude</th><th>Longitude</th><th>Altitude</th><th>Geolocation</th></tr></thead><tbody>
-                {cvResult.objects.map((item) => <tr key={`${item.track_id}-${item.first_frame}`}><td>#{item.track_id}</td><td>{item.class_name}</td><td>{(item.confidence * 100).toFixed(1)}%</td><td>{item.first_frame}–{item.last_frame}</td><td>{item.observations}</td><td>{item.latitude?.toFixed(6) ?? "--"}</td><td>{item.longitude?.toFixed(6) ?? "--"}</td><td>{item.relative_altitude_m?.toFixed(1) ?? "--"} m</td><td>{item.geolocation_mode.replace(/_/g, " ")}</td></tr>)}
-              </tbody></table></div>
-            </> : <div className="panel-empty database-empty"><div><strong>No recognized objects stored for this session</strong><p>Open Video, configure the CV layers, and run a preview to populate the object database.</p><button type="button" onClick={() => setActiveTab("video")}>Open CV workbench</button></div></div>}
+            <div className="panel-header-row"><div><h3>Geolocated object database</h3><p>Recognized and tracked objects persisted from CV preview runs. Select a row to inspect its profile.</p></div>{cvResult && <strong className="data-badge">SQLite · {cvResult.objects.length} objects</strong>}</div>
+            {cvResult?.objects.length ? (
+              <div className="database-split">
+                <div className="database-table-pane">
+                  <div className="database-path" title={cvResult.database_path}>{cvResult.database_path}</div>
+                  <div className="table-wrap"><table><thead><tr><th>Track</th><th>Class</th><th>Confidence</th><th>Frames</th><th>Observations</th><th>Latitude</th><th>Longitude</th><th>Altitude</th><th>Geolocation</th></tr></thead><tbody>
+                    {cvResult.objects.map((item) => (
+                      <tr
+                        key={`${item.track_id}-${item.first_frame}`}
+                        className={selectedIdentityId === item.track_id ? "selected" : ""}
+                        onClick={() => setSelectedIdentityId(item.track_id)}
+                        title={`Select identity ${item.track_id}`}
+                      >
+                        <td>#{item.track_id}</td><td>{item.class_name}</td><td>{(item.confidence * 100).toFixed(1)}%</td><td>{item.first_frame}–{item.last_frame}</td><td>{item.observations}</td><td>{item.latitude?.toFixed(6) ?? "--"}</td><td>{item.longitude?.toFixed(6) ?? "--"}</td><td>{item.relative_altitude_m?.toFixed(1) ?? "--"} m</td><td>{item.geolocation_mode.replace(/_/g, " ")}</td>
+                      </tr>
+                    ))}
+                  </tbody></table></div>
+                </div>
+                <aside className="identity-profile database-profile" aria-live="polite">
+                  <IdentityProfile
+                    identity={selectedIdentity}
+                    history={selectedIdentityHistory}
+                    onBack={() => setSelectedIdentityId(null)}
+                    emptyHint="Click a table row to inspect its profile photo and sighting history."
+                  />
+                </aside>
+              </div>
+            ) : <div className="panel-empty database-empty"><div><strong>No recognized objects stored for this session</strong><p>Open Video, configure the CV layers, and run a preview to populate the object database.</p><button type="button" onClick={() => setActiveTab("video")}>Open CV workbench</button></div></div>}
           </section>
         )}
 

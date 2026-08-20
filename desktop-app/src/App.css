@@ -957,6 +957,49 @@ video:-webkit-full-screen {
   margin-top: 12px;
 }
 
+.database-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+  margin-top: 4px;
+}
+
+.database-table-pane {
+  min-width: 0;
+}
+
+.database-profile {
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.database-table-pane tbody tr {
+  cursor: pointer;
+}
+
+.database-table-pane tbody tr:hover {
+  background: rgba(14, 165, 233, 0.12);
+}
+
+.database-table-pane tbody tr.selected {
+  background: rgba(225, 29, 72, 0.16);
+  outline: 1px solid rgba(225, 29, 72, 0.55);
+}
+
+@media (max-width: 900px) {
+  .database-split {
+    grid-template-columns: 1fr;
+  }
+
+  .database-profile {
+    position: static;
+    max-height: none;
+  }
+}
+
  table {
   width: 100%;
   border-collapse: collapse;
@@ -1266,4 +1309,78 @@ th {
 .settings-note {
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+.interactive-viewer-section {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.interactive-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.interactive-stage {
+  position: relative;
+  width: 100%;
+}
+
+.interactive-stage video {
+  width: 100%;
+  display: block;
+  border-radius: 8px;
+  background: #020617;
+}
+
+.interactive-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.interactive-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.interactive-controls .toggle-row.compact {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.interactive-frame-readout {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.interactive-scrubber {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.interactive-scrubber input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.interactive-scrubber button {
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
 }

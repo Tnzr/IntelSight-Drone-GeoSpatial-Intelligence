@@ -413,9 +413,32 @@ fn read_media_file(path: &str) -> Result<tauri::ipc::Response, String> {
 }
 
 #[tauri::command]
+fn read_detections_jsonl(path: &str) -> Result<Vec<serde_json::Value>, String> {
+    let candidate = Path::new(path);
+    if !candidate.is_file() {
+        return Err(format!("Detections file not found: {path}"));
+    }
+    let content = fs::read_to_string(candidate).map_err(|err| err.to_string())?;
+    let mut records = Vec::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<serde_json::Value>(line) {
+            Ok(value) => records.push(value),
+            Err(err) => return Err(format!("Invalid JSONL line: {err}")),
+        }
+    }
+    Ok(records)
+}
+
+#[tauri::command]
 async fn prepare_media_preview(
     app: tauri::AppHandle,
     path: String,
+    start_seconds: Option<f64>,
+    duration_seconds: Option<f64>,
     on_progress: Channel<ProgressUpdate>,
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -424,11 +447,16 @@ async fn prepare_media_preview(
             return Err(format!("Media file not found: {path}"));
         }
 
+        let start_seconds = start_seconds.unwrap_or(0.0).max(0.0);
+        let duration_seconds = duration_seconds.unwrap_or(10.0).clamp(2.0, 120.0);
+
         let metadata = fs::metadata(source).map_err(|err| err.to_string())?;
         let mut hasher = DefaultHasher::new();
         path.hash(&mut hasher);
         metadata.len().hash(&mut hasher);
         metadata.modified().ok().hash(&mut hasher);
+        start_seconds.to_bits().hash(&mut hasher);
+        duration_seconds.to_bits().hash(&mut hasher);
 
         let cache_dir = app
             .path()
@@ -444,19 +472,14 @@ async fn prepare_media_preview(
         }
 
         report_progress(&on_progress, "transcoding", 0, 10_000, "Starting H.264 preview conversion");
-        let mut ffmpeg = Command::new("ffmpeg")
+        let duration_label = format!("{:.1}", duration_seconds);
+        let mut ffmpeg = Command::new("ffmpeg");
+        ffmpeg
+            .args(["-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats", "-y"])
+            .args(["-ss", &start_seconds.to_string()])
+            .args(["-i", &path])
+            .args(["-t", &duration_label])
             .args([
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-progress",
-                "pipe:1",
-                "-nostats",
-                "-y",
-                "-i",
-                &path,
-                "-t",
-                "10",
                 "-map",
                 "0:v:0",
                 "-vf",
@@ -475,21 +498,27 @@ async fn prepare_media_preview(
             ])
             .arg(&output)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut ffmpeg = ffmpeg
             .spawn()
             .map_err(|err| format!("Could not start ffmpeg: {err}"))?;
 
+        let total_ms = (duration_seconds * 1_000.0) as u64;
         if let Some(stdout) = ffmpeg.stdout.take() {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 if let Some(value) = line.strip_prefix("out_time_ms=") {
                     if let Ok(microseconds) = value.parse::<u64>() {
-                        let milliseconds = (microseconds / 1_000).min(10_000);
+                        let milliseconds = (microseconds / 1_000).min(total_ms);
                         report_progress(
                             &on_progress,
                             "transcoding",
                             milliseconds,
-                            10_000,
-                            format!("Encoded {:.1} of 10.0 seconds", milliseconds as f64 / 1_000.0),
+                            total_ms,
+                            format!(
+                                "Encoded {:.1} of {} seconds",
+                                milliseconds as f64 / 1_000.0,
+                                duration_label
+                            ),
                         );
                     }
                 }
@@ -507,7 +536,7 @@ async fn prepare_media_preview(
             ));
         }
 
-        report_progress(&on_progress, "complete", 10_000, 10_000, "Video preview ready");
+        report_progress(&on_progress, "complete", total_ms, total_ms, "Video preview ready");
         Ok(output.to_string_lossy().to_string())
     })
     .await
@@ -684,6 +713,7 @@ pub fn run() {
             scan_directory,
             read_annotation_file,
             read_media_file,
+            read_detections_jsonl,
             prepare_media_preview,
             run_cv_preview,
             load_cv_result,

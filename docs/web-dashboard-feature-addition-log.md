@@ -177,3 +177,20 @@ Implement desktop-style mission visualization without redundant loading of large
 - New dedicated "settings" tab with CV workbench defaults (device, confidence, frame stride, clip duration, start offset, ROI padding), mission/map preferences (remember last mission root, default map display mode), and maintenance actions (clear recent missions, reset defaults).
 - Settings persist in localStorage (`intelsight.settings`) and apply to new workbench runs; the last mission root is remembered per scan and prefilled on startup when enabled.
 - New functional spec: `plans/desktop-app-tab-requirements.md` — per-tab requirements and improvement backlog (playback resolution presets, plate/OCR batch trigger, geofence overlays, multi-run aggregation, lab regeneration from the app).
+
+## 2026-08-20 Tauri UX fixes and interactive frame inspector
+
+1. Map tab
+- Fixed blank map beyond zoom 19: TileLayer now uses maxNativeZoom 19 with maxZoom 22 so Leaflet upscales OSM tiles instead of showing empty canvas.
+
+2. Database tab
+- Restructured into a split view: object table (left) with click-to-select rows and the identity profile panel (right). Profile component extracted and shared with the Map tab (photo crop, sightings, history, position spread).
+
+3. CV workbench refresh
+- After a CV run completes the app now auto-switches to the Video tab, clears identity selection, and remounts the overlay player + inspector via a run counter so overwritten artifacts (overlay.mp4, detections JSONL) are reloaded instead of serving the stale cached file.
+
+4. Interactive frame inspector (live CV preview groundwork)
+- New `read_detections_jsonl` Rust command and parameterized `prepare_media_preview` (start_seconds, duration_seconds, cache-keyed per segment).
+- Preview payload now carries video_fps/video_width/video_height.
+- New InteractiveCvViewer in the Video tab: seekable proxy of the processed window, canvas overlay drawing per-frame boxes/labels, frame scrubber, and "use current frame as start offset" to continue the next run from the chosen frame.
+- Live parameter re-rendering (optical-flow params) deferred to the streaming tracker phase; documented in plans/desktop-app-tab-requirements.md.

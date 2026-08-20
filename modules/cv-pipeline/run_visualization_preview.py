@@ -663,6 +663,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "observation_count": len(observations),
         "objects": track_records,
         "track_history": track_history,
+        "video_fps": round(float(fps), 3),
+        "video_width": width,
+        "video_height": height,
         "configuration": {
             "detections": args.detections,
             "optical_flow": args.optical_flow,
