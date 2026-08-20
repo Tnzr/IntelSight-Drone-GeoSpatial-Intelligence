@@ -29,6 +29,35 @@ The project should be framed as an intelligence platform, not a single algorithm
 - contextual analytics
 - autonomy and swarm control in later phases
 
+## Sensitive data and GitHub policy
+
+The raw mission footage and flight records under `data/` are not intended for GitHub tracking. This repository keeps only a minimal public documentation footprint and intentionally excludes sensitive video, telemetry, geospatial evidence, or test footage from version control.
+
+Use this pattern for local-only datasets:
+
+```bash
+mkdir -p data/flightrecords/flight_mission_drone
+# place local footage and mission records here
+```
+
+The repository intentionally ignores all `data/**` content except a small README placeholder. This prevents accidental leakage of surveillance footage, customer location data, or operational records.
+
+## Development environment
+
+This project is designed to run in a dedicated Conda/Mamba environment for reproducibility and multi-GPU utilization. The authoritative environment is `intelsight` in the Mamba root at `/home/tnzr/.local/share/mamba/envs/intelsight`.
+
+```bash
+mamba run -n intelsight python -m unittest tests.test_license_plate_service -q
+mamba run -n intelsight python modules/cv-pipeline/run_cv_pipeline.py \
+  --input-dir data/flightrecords/flight_mission_drone/FlagerPublix \
+  --output-dir output/cv/FlagerPublix \
+  --devices 0 \
+  --frame-step 2 \
+  --batch-size 16
+```
+
+The older repo-local `.venv` is not the authoritative runtime for mission processing and should not be used for validation or final outputs.
+
 ## Strategic direction
 
 ### Phase I: offline intelligence with consumer drones
@@ -81,6 +110,16 @@ This repository is intentionally staged as a planning and architecture foundatio
 - Establish a geospatial intelligence database
 - Add contextual pattern-of-life analytics
 - Prepare for onboard autonomy on an open drone platform
+
+## Mission Explorer
+
+Run the browser-based mission explorer to select trajectory and detection files, then review the mission in 2D and 3D:
+
+```bash
+make dashboard
+```
+
+The dashboard can load workspace artifacts from `output/` or accept uploaded files for browser-first use.
 
 ## Legal and ethics note
 

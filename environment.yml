@@ -1,0 +1,28 @@
+name: intelsight
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - rust
+  - pip
+  - numpy
+  - pandas
+  - scipy
+  - scikit-image
+  - opencv
+  - pytorch
+  - torchvision
+  - ultralytics
+  - easyocr
+  - streamlit
+  - folium
+  - geojson
+  - plotly
+  - geopandas
+  - pyproj
+  - typer
+  - pydantic
+  - tqdm
+  - pip:
+      - branca
+      - ultralytics

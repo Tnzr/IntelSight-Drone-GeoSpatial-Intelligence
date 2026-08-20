@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Rust
+**/target/
+
+# Model weights and checkpoints
+models/
+*.pt
+*.onnx
+
+# Local python environments
+.venv/
+.conda/
+
+# Sensitive mission data
+# Video, logs, frames, and flight footage are withheld from GitHub to protect privacy and operational security.
+data/**
+!data/README.md
+!data/flightrecords/README.md
+
+# Local secrets
+.secrets/*
+!.secrets/.env.example
+
+# Generated outputs
+output/**
+!output/README.md
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
