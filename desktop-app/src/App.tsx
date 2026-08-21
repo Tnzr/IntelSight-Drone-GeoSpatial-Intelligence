@@ -164,6 +164,45 @@ const defaultSettings: AppSettings = {
   defaultHistoryMode: "latest",
 };
 
+function LineChart({
+  data,
+  xLabel,
+  yLabel,
+  color,
+}: {
+  data: number[];
+  xLabel: string;
+  yLabel: string;
+  color: string;
+}) {
+  if (data.length === 0) return null;
+  const w = 700;
+  const h = 200;
+  const pad = { top: 16, right: 16, bottom: 36, left: 52 };
+  const cw = w - pad.left - pad.right;
+  const ch = h - pad.top - pad.bottom;
+  const max = Math.max(...data, 1);
+  const points = data.map((v, i) => ({
+    x: pad.left + (data.length > 1 ? (i / (data.length - 1)) * cw : cw / 2),
+    y: pad.top + ch - (v / max) * ch,
+  }));
+  const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="line-chart-svg" preserveAspectRatio="xMidYMid meet">
+      <line x1={pad.left} y1={pad.top} x2={pad.left} y2={pad.top + ch} stroke="#475569" strokeWidth="1" />
+      <line x1={pad.left} y1={pad.top + ch} x2={pad.left + cw} y2={pad.top + ch} stroke="#475569" strokeWidth="1" />
+      <path d={pathD} fill="none" stroke={color} strokeWidth="2" />
+      {points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="2.5" fill={color} />
+      ))}
+      <text x={pad.left + cw / 2} y={h - 4} textAnchor="middle" fill="#94a3b8" fontSize="11">{xLabel}</text>
+      <text x={8} y={pad.top + ch / 2} textAnchor="middle" fill="#94a3b8" fontSize="11" transform={`rotate(-90, 8, ${pad.top + ch / 2})`}>{yLabel}</text>
+      <text x={pad.left + 4} y={pad.top + 10} fill="#94a3b8" fontSize="10">{max.toFixed(1)}</text>
+      <text x={pad.left + 4} y={pad.top + ch} fill="#94a3b8" fontSize="10">0</text>
+    </svg>
+  );
+}
+
 function readRecentMissions() {
   try {
     return JSON.parse(localStorage.getItem(recentMissionsKey) ?? "[]") as string[];
@@ -637,10 +676,25 @@ function GeolocationRays3D({
     scene.add(group);
     groupRef.current = group;
 
-    // Ground plane in the XZ plane (Y = 0), matching X=east, Y=up, Z=north.
+    // Ground plane in the XZ plane (Y = 0), matching X=east, Y=up, Z=-north.
+    // Z is negated so the 3D view curvature matches the 2D map.
     const grid = new THREE.GridHelper(400, 40, 0x334155, 0x1e293b);
     grid.position.y = 0;
     scene.add(grid);
+
+    // Reference axes: X=east (red), Y=up (green), Z=-north (blue)
+    const axisLen = 30;
+    const axisOrigin = new THREE.Vector3(0, 0, 0);
+    const xEnd = new THREE.Vector3(axisLen, 0, 0);
+    const yEnd = new THREE.Vector3(0, axisLen, 0);
+    const zEnd = new THREE.Vector3(0, 0, -axisLen);
+    const makeAxis = (from: THREE.Vector3, to: THREE.Vector3, color: number) => {
+      const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
+      group.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color })));
+    };
+    makeAxis(axisOrigin, xEnd, 0xef4444);
+    makeAxis(axisOrigin, yEnd, 0x22c55e);
+    makeAxis(axisOrigin, zEnd, 0x3b82f6);
 
     const hemisphere = new THREE.HemisphereLight(0xffffff, 0x334155, 1.1);
     scene.add(hemisphere);
@@ -733,7 +787,7 @@ function GeolocationRays3D({
     if (trajectory.length > 1) {
       const positions = trajectory.map((point) => {
         const [east, north] = enu(point.latitude, point.longitude);
-        return new THREE.Vector3(east, Math.max(0, point.altitude), north);
+        return new THREE.Vector3(east, Math.max(0, point.altitude), -north);
       });
       const geometry = new THREE.BufferGeometry().setFromPoints(positions);
       const material = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85 });
@@ -744,7 +798,7 @@ function GeolocationRays3D({
     objectIdsRef.current = objectIds;
     const objectPositions = objects.map((item) => {
       const [east, north] = enu(item.latitude, item.longitude);
-      return new THREE.Vector3(east, 0.5, north);
+      return new THREE.Vector3(east, 0.5, -north);
     });
     if (objectPositions.length > 0) {
       const geometry = new THREE.BufferGeometry().setFromPoints(objectPositions);
@@ -759,7 +813,7 @@ function GeolocationRays3D({
       const markerGeometry = new THREE.SphereGeometry(1.2, 16, 16);
       const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xf97316 });
       const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-      marker.position.set(selectedEast, 0.5, selectedNorth);
+      marker.position.set(selectedEast, 0.5, -selectedNorth);
       group.add(marker);
 
       const frameToPoint = new Map<number, TelemetryPoint3D>();
@@ -770,8 +824,8 @@ function GeolocationRays3D({
         const drone = frameToPoint.get(observation.frame);
         if (!drone) continue;
         const [droneEast, droneNorth] = enu(drone.latitude, drone.longitude);
-        rayPositions.push(new THREE.Vector3(droneEast, Math.max(0.5, drone.altitude), droneNorth));
-        rayPositions.push(new THREE.Vector3(selectedEast, 0.5, selectedNorth));
+        rayPositions.push(new THREE.Vector3(droneEast, Math.max(0.5, drone.altitude), -droneNorth));
+        rayPositions.push(new THREE.Vector3(selectedEast, 0.5, -selectedNorth));
       }
       if (rayPositions.length > 0) {
         const rayGeometry = new THREE.BufferGeometry().setFromPoints(rayPositions);
@@ -1670,6 +1724,15 @@ function App() {
                     <div className="panel-empty">Run a CV preview to populate the object database.</div>
                   )}
                 </div>
+                <div className="mission-panel mission-profile-panel">
+                  <div className="mission-panel-title">Identity profile</div>
+                  <IdentityProfile
+                    identity={selectedIdentity}
+                    history={selectedIdentityHistory}
+                    onBack={() => setSelectedIdentityId(null)}
+                    emptyHint="Select an identity from the map, 3D view, or database."
+                  />
+                </div>
               </div>
             ) : (
               <div className="panel-empty">Load an SRT trajectory to open the combined mission view.</div>
@@ -1687,12 +1750,7 @@ function App() {
             </div>
             <h4 className="chart-section-title">Altitude profile</h4>
             {chartBuckets.length > 0 ? (
-              <div className="bar-chart" aria-label="Relative altitude chart">
-                {chartBuckets.map((value, index) => {
-                  const maximum = Math.max(...chartBuckets, 1);
-                  return <div key={index} className="chart-bar" style={{ height: `${Math.max(3, (value / maximum) * 100)}%` }} title={`${value.toFixed(1)} m`} />;
-                })}
-              </div>
+              <LineChart data={chartBuckets} xLabel="Time bucket" yLabel="Altitude (m)" color="#38bdf8" />
             ) : (
               <div className="panel-empty">Load an SRT trajectory to chart mission altitude.</div>
             )}
@@ -1704,12 +1762,7 @@ function App() {
 
             <h4 className="chart-section-title">Objects in scene</h4>
             {objectCountBuckets.length > 0 ? (
-              <div className="bar-chart object-count-chart" aria-label="Objects in scene chart">
-                {objectCountBuckets.map((value, index) => {
-                  const maximum = Math.max(...objectCountBuckets, 1);
-                  return <div key={index} className="chart-bar object-count-bar" style={{ height: `${Math.max(3, (value / maximum) * 100)}%` }} title={`${value.toFixed(1)} objects`} />;
-                })}
-              </div>
+              <LineChart data={objectCountBuckets} xLabel="Time bucket" yLabel="Objects" color="#f59e0b" />
             ) : (
               <div className="panel-empty">Run a CV preview to chart per-frame object counts.</div>
             )}
@@ -1721,12 +1774,7 @@ function App() {
 
             <h4 className="chart-section-title">Processing FPS over time</h4>
             {fpsBuckets.length > 0 ? (
-              <div className="bar-chart fps-chart" aria-label="Processing FPS over time chart">
-                {fpsBuckets.map((value, index) => {
-                  const maximum = Math.max(...fpsBuckets, 1);
-                  return <div key={index} className="chart-bar fps-bar" style={{ height: `${Math.max(3, (value / maximum) * 100)}%` }} title={`${value.toFixed(1)} fps`} />;
-                })}
-              </div>
+              <LineChart data={fpsBuckets} xLabel="Time bucket" yLabel="FPS" color="#22c55e" />
             ) : (
               <div className="panel-empty">Run a CV preview to chart processing FPS.</div>
             )}

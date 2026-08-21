@@ -260,3 +260,10 @@ Implement desktop-style mission visualization without redundant loading of large
 3. FPS-over-time chart
 - Python CV preview now tracks per-frame processing time and exposes fps_over_time in the payload.
 - Charts tab gains a "Processing FPS over time" bar chart with peak/average metrics.
+
+## 2026-08-20 Mission view identity profile, line charts, 3D axis fix
+
+1. Mission view now has 4 panels: Map, 3D geolocation, Object database, and Identity profile — all selectable from any panel.
+2. All charts converted from bar charts to SVG line plots with X/Y axis labels.
+3. 3D view Z-axis inverted (-north) to match the 2D map curvature; added RGB reference axes (X=east red, Y=up green, Z=-north blue).
+4. Fixed Rust unused-assignment warning in run_cv_preview.
