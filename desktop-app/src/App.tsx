@@ -25,6 +25,8 @@ type ScanResult = {
 type ScanState = "idle" | "scanning" | "success" | "empty" | "error";
 type DashboardTab = "overview" | "video" | "map" | "3d" | "mission" | "database" | "charts" | "lab" | "settings";
 
+type GroundPlaneMode = "grid" | "map" | "satellite";
+
 type LabArtifact = {
   name: string;
   path: string;
@@ -636,12 +638,14 @@ function GeolocationRays3D({
   selectedHistory,
   selectedObject,
   onSelect,
+  groundPlane,
 }: {
   trajectory: TelemetryPoint3D[];
   objects: Array<GeolocatedObject & { latitude: number; longitude: number }>;
   selectedHistory: PositionedObservation[];
   selectedObject: (GeolocatedObject & { latitude: number; longitude: number }) | null;
   onSelect: (trackId: number) => void;
+  groundPlane: GroundPlaneMode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -681,12 +685,6 @@ function GeolocationRays3D({
     scene.add(group);
     groupRef.current = group;
 
-    // Ground plane in the XZ plane (Y = 0), matching X=east, Y=up, Z=-north.
-    // Z is negated so the 3D view curvature matches the 2D map.
-    const grid = new THREE.GridHelper(400, 40, 0x334155, 0x1e293b);
-    grid.position.y = 0;
-    scene.add(grid);
-
     // Reference axes: X=east (red), Y=up (green), Z=-north (blue)
     const axisLen = 30;
     const axisOrigin = new THREE.Vector3(0, 0, 0);
@@ -700,6 +698,41 @@ function GeolocationRays3D({
     makeAxis(axisOrigin, xEnd, 0xef4444);
     makeAxis(axisOrigin, yEnd, 0x22c55e);
     makeAxis(axisOrigin, zEnd, 0x3b82f6);
+
+    // Ground plane: grid, map tiles, or satellite
+    const groundPlaneSize = 400;
+    if (groundPlane === "grid") {
+      const grid = new THREE.GridHelper(groundPlaneSize, 40, 0x334155, 0x1e293b);
+      grid.position.y = 0;
+      scene.add(grid);
+    } else {
+      const ref = trajectory[0] ?? { latitude: 25.7699, longitude: -80.3587 };
+      const tileZoom = 18;
+      const lonToTile = (lon: number, z: number) => Math.floor((lon + 180) / 360 * Math.pow(2, z));
+      const latToTile = (lat: number, z: number) => {
+        const latRad = (lat * Math.PI) / 180;
+        return Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * Math.pow(2, z));
+      };
+      const tileX = lonToTile(ref.longitude, tileZoom);
+      const tileY = latToTile(ref.latitude, tileZoom);
+      const tileUrl = groundPlane === "satellite"
+        ? `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${tileZoom}/${tileY}/${tileX}`
+        : `https://tile.openstreetmap.org/${tileZoom}/${tileY}/${tileX}`;
+      const loader = new THREE.TextureLoader();
+      loader.load(tileUrl, (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        const mat = new THREE.MeshBasicMaterial({ map: texture });
+        const planeGeo = new THREE.PlaneGeometry(groundPlaneSize, groundPlaneSize);
+        planeGeo.rotateX(-Math.PI / 2);
+        const plane = new THREE.Mesh(planeGeo, mat);
+        plane.position.y = 0;
+        group.add(plane);
+      }, undefined, () => {
+        const grid = new THREE.GridHelper(groundPlaneSize, 40, 0x334155, 0x1e293b);
+        grid.position.y = 0;
+        scene.add(grid);
+      });
+    }
 
     const hemisphere = new THREE.HemisphereLight(0xffffff, 0x334155, 1.1);
     scene.add(hemisphere);
@@ -883,6 +916,9 @@ function App() {
   const [labError, setLabError] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>(readSettings);
   const [historyMode, setHistoryMode] = useState<"latest" | "history">(readSettings().defaultHistoryMode);
+  const [groundPlane, setGroundPlane] = useState<GroundPlaneMode>("grid");
+  const [identityFilter, setIdentityFilter] = useState("");
+  const [identitySort, setIdentitySort] = useState<"track" | "confidence" | "spread">("track");
   const [cvConfig, setCvConfig] = useState<CvConfiguration>(() => {
     const saved = readSettings();
     return {
@@ -984,6 +1020,25 @@ function App() {
     ),
     [cvResult],
   );
+
+  const filteredObjects = useMemo(() => {
+    let items = geolocatedObjects;
+    const q = identityFilter.trim().toLowerCase();
+    if (q) {
+      items = items.filter((item) =>
+        `#${item.track_id}`.includes(q) ||
+        item.class_name.toLowerCase().includes(q) ||
+        (item.plate_text ?? "").toLowerCase().includes(q),
+      );
+    }
+    const sorted = [...items].sort((a, b) => {
+      if (identitySort === "confidence") return b.confidence - a.confidence;
+      if (identitySort === "spread") return (a.geo_spread_m ?? Infinity) - (b.geo_spread_m ?? Infinity);
+      return a.track_id - b.track_id;
+    });
+    return sorted;
+  }, [geolocatedObjects, identityFilter, identitySort]);
+
   const selectedIdentity = useMemo(
     () => geolocatedObjects.find((item) => item.track_id === selectedIdentityId) ?? null,
     [geolocatedObjects, selectedIdentityId],
@@ -1652,12 +1707,27 @@ function App() {
             </div>
             {telemetryPoints.length > 0 ? (
               <div className="geolocation-3d-stage">
+                <div className="panel-header-row">
+                  <div>
+                    <h3>3D geolocation view</h3>
+                    <p>Drone trajectory, detected objects, and geolocation rays for the selected identity. Drag to rotate, scroll to zoom.</p>
+                  </div>
+                  <div className="map-controls-row">
+                    <select value={groundPlane} onChange={(event) => setGroundPlane(event.target.value as GroundPlaneMode)} aria-label="Ground plane mode">
+                      <option value="grid">Grid</option>
+                      <option value="map">Map</option>
+                      <option value="satellite">Satellite</option>
+                    </select>
+                    {selectedIdentity && <strong className="data-badge">Identity #{selectedIdentity.track_id} · {selectedIdentityHistory.length} rays</strong>}
+                  </div>
+                </div>
                 <GeolocationRays3D
                   trajectory={telemetryPoints}
                   objects={geolocatedObjects}
                   selectedHistory={selectedIdentityHistory}
                   selectedObject={selectedIdentity}
                   onSelect={setSelectedIdentityId}
+                  groundPlane={groundPlane}
                 />
               </div>
             ) : (
@@ -1671,7 +1741,7 @@ function App() {
             <div className="panel-header-row">
               <div>
                 <h3>Mission view</h3>
-                <p>Map, 3D geolocation, and object database side by side. Select an identity from any panel.</p>
+                <p>Map, 3D geolocation, and object database with identity sidebar. Select from any panel.</p>
               </div>
               <div className="map-controls-row">
                 <select value={historyMode} onChange={(event) => setHistoryMode(event.target.value as "latest" | "history")} aria-label="Identity display mode">
@@ -1706,27 +1776,47 @@ function App() {
                   </MapContainer>
                 </div>
                 <div className="mission-panel mission-3d-panel">
-                  <div className="mission-panel-title">3D geolocation</div>
+                  <div className="mission-panel-title">
+                    3D geolocation
+                    <span className="mission-panel-controls">
+                      <select value={groundPlane} onChange={(event) => setGroundPlane(event.target.value as GroundPlaneMode)} aria-label="Ground plane mode">
+                        <option value="grid">Grid</option>
+                        <option value="map">Map</option>
+                        <option value="satellite">Satellite</option>
+                      </select>
+                    </span>
+                  </div>
                   <GeolocationRays3D
                     trajectory={telemetryPoints}
                     objects={geolocatedObjects}
                     selectedHistory={selectedIdentityHistory}
                     selectedObject={selectedIdentity}
                     onSelect={setSelectedIdentityId}
+                    groundPlane={groundPlane}
                   />
                 </div>
                 <div className="mission-panel mission-database-panel">
-                  <div className="mission-panel-title">Object database</div>
-                  {cvResult?.objects.length ? (
-                    <div className="table-wrap mission-table"><table><thead><tr><th>Track</th><th>Class</th><th>Conf</th><th>Obs</th><th>Latitude</th><th>Longitude</th><th>Spread</th></tr></thead><tbody>
-                      {cvResult.objects.map((item) => (
+                  <div className="mission-panel-title">
+                    Object database
+                    <span className="mission-panel-controls">
+                      <input type="text" placeholder="Search #, class, plate…" value={identityFilter} onChange={(event) => setIdentityFilter(event.target.value)} className="identity-filter-input" />
+                      <select value={identitySort} onChange={(event) => setIdentitySort(event.target.value as "track" | "confidence" | "spread")} className="identity-sort-select">
+                        <option value="track">By track</option>
+                        <option value="confidence">By confidence</option>
+                        <option value="spread">By spread</option>
+                      </select>
+                    </span>
+                  </div>
+                  {filteredObjects.length > 0 ? (
+                    <div className="table-wrap mission-table"><table><thead><tr><th>Track</th><th>Class</th><th>Conf</th><th>Obs</th><th>Spread</th></tr></thead><tbody>
+                      {filteredObjects.map((item) => (
                         <tr key={`${item.track_id}-${item.first_frame}`} className={selectedIdentityId === item.track_id ? "selected" : ""} onClick={() => setSelectedIdentityId(item.track_id)}>
-                          <td>#{item.track_id}</td><td>{item.class_name}</td><td>{(item.confidence * 100).toFixed(0)}%</td><td>{item.observations}</td><td>{item.latitude?.toFixed(6) ?? "--"}</td><td>{item.longitude?.toFixed(6) ?? "--"}</td><td>{item.geo_spread_m != null ? `${item.geo_spread_m.toFixed(2)} m` : "--"}</td>
+                          <td>#{item.track_id}</td><td>{item.class_name}</td><td>{(item.confidence * 100).toFixed(0)}%</td><td>{item.observations}</td><td>{item.geo_spread_m != null ? `${item.geo_spread_m.toFixed(2)} m` : "--"}</td>
                         </tr>
                       ))}
                     </tbody></table></div>
                   ) : (
-                    <div className="panel-empty">Run a CV preview to populate the object database.</div>
+                    <div className="panel-empty">{identityFilter ? "No identities match the filter." : "Run a CV preview to populate the object database."}</div>
                   )}
                 </div>
                 <div className="mission-panel mission-profile-panel">

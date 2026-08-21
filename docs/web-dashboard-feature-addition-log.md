@@ -278,3 +278,10 @@ Implement desktop-style mission visualization without redundant loading of large
 
 3. Weaknesses and improvements document
 - Created `docs/weaknesses-and-improvements.md` with a comprehensive audit of 9 categories of weaknesses and priority recommendations.
+
+## 2026-08-20 Identity sidebar, search/filter, and satellite ground plane
+
+1. Identity profile moved to right sidebar in mission view (4-panel layout: Map | 3D | Database | Profile)
+2. Identity search/filter input with sort by track ID, confidence, or geo spread (ready for plate text search when OCR is wired)
+3. 3D ground plane toggle: Grid / Map (OSM) / Satellite (ESRI World Imagery) — tiles fetched from the trajectory's center coordinates
+4. Ground plane toggle also available in the standalone 3D tab
