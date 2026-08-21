@@ -22,9 +22,12 @@ Owner: IntelSight dashboard + CV pipeline
 - [x] Add multi-runner startup fallback (mamba, conda, micromamba, streamlit)
 - [x] Add PATH augmentation for common mamba/conda install locations
 - [x] Add explicit launcher error when no environment runner is found
-- [ ] Validate dashboard launch in target shell after mamba PATH confirmation
+- [x] Validate dashboard launch in target shell after mamba PATH confirmation
 - [ ] Validate overlay-first playback on at least one generated overlay clip
 - [ ] Validate 1080p and 720p preview cache generation on 4K source
+- [x] Add per-module Workshop Lab to dashboard with integration visualizations (2026-08-20)
+- [x] Add Workshop Lab tab to Tauri desktop app rendering exported lab artifacts (2026-08-20)
+- [x] Fix runner env resolution to use the intelsight env python directly (2026-08-20)
 
 ## Geolocation and 3D Integrity
 

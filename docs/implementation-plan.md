@@ -155,28 +155,6 @@ The pipeline must be proven on the FlagerPublix dataset using `mamba run -n inte
 - contextual geofence tagging is consistent
 - anomaly engine can rank unusual traffic behavior
 
-## 4. Phase 1.5: analytics and pattern-of-life
-
-### Goals
-
-- infer patterns from repeated detections
-- link vehicles to facilities, parking lots, and neighborhoods
-- produce contextual intelligence for future target selection
-
-### Work packages
-
-- geofence definitions for parking lots, neighborhoods, casinos, nightclubs, hotels, dealerships
-- historical association engine for repeated plate observations
-- anomaly scoring based on time and place
-- reverse geocoding and address-level enrichment where legally justified
-- database queries for association graphs and habitual routes
-
-### Success metrics
-
-- repeated detections are clustered correctly
-- contextual geofence tagging is consistent
-- anomaly engine can rank unusual traffic behavior
-
 ## 5. Phase 2: open hardware autonomy stack
 
 ### Goals
@@ -246,7 +224,7 @@ The pipeline must be proven on the FlagerPublix dataset using `mamba run -n inte
 7. dashboard and API layer
 8. open-hardware autonomy integration
 
-## 8. Risk management
+## 9. Risk management
 
 - Maintain modular boundaries between telemetry parsing, perception, geospatial logic, and mission control.
 - Validate every component with field data and reproducible tests.
