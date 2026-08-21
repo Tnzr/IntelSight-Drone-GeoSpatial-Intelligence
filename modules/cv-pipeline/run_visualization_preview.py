@@ -344,6 +344,12 @@ def track_position_summary(
         if len(arrays) < 2:
             break
 
+    if len(arrays) == 0:
+        fallback = np.asarray(positions)
+        summary = fallback.mean(axis=0)
+        mode = "ground_ray_multi" if len(positions) > 1 else "ground_ray_single"
+        return float(summary[0]), float(summary[1]), mode, None
+
     summary = arrays.mean(axis=0)
     north_m = (arrays[:, 0] - summary[0]) * 111_320
     east_m = (arrays[:, 1] - summary[1]) * 111_320 * math.cos(math.radians(float(summary[0])))

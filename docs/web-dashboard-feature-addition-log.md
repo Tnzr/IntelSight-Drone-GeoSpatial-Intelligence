@@ -267,3 +267,14 @@ Implement desktop-style mission visualization without redundant loading of large
 2. All charts converted from bar charts to SVG line plots with X/Y axis labels.
 3. 3D view Z-axis inverted (-north) to match the 2D map curvature; added RGB reference axes (X=east red, Y=up green, Z=-north blue).
 4. Fixed Rust unused-assignment warning in run_cv_preview.
+
+## 2026-08-20 CV preview crash fix, chart labels, and weaknesses document
+
+1. CV preview crash fix
+- `track_position_summary` now handles the case where all observations are filtered out by the 2-sigma trim (empty arrays → fallback to original mean instead of crashing on `arrays.mean(axis=0)`). This was the root cause of "CV preview returned no result. Python stderr: ret = ret.dtype.type(ret / rcount)".
+
+2. Chart coordinate labels
+- Line charts now show sample count annotation and proper axis labels.
+
+3. Weaknesses and improvements document
+- Created `docs/weaknesses-and-improvements.md` with a comprehensive audit of 9 categories of weaknesses and priority recommendations.

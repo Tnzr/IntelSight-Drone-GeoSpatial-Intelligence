@@ -199,6 +199,11 @@ function LineChart({
       <text x={8} y={pad.top + ch / 2} textAnchor="middle" fill="#94a3b8" fontSize="11" transform={`rotate(-90, 8, ${pad.top + ch / 2})`}>{yLabel}</text>
       <text x={pad.left + 4} y={pad.top + 10} fill="#94a3b8" fontSize="10">{max.toFixed(1)}</text>
       <text x={pad.left + 4} y={pad.top + ch} fill="#94a3b8" fontSize="10">0</text>
+      {data.length > 1 && (
+        <text x={pad.left + cw} y={pad.top + ch + 14} textAnchor="end" fill="#64748b" fontSize="9">
+          {data.length} samples
+        </text>
+      )}
     </svg>
   );
 }
