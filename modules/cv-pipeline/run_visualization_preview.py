@@ -5,6 +5,7 @@ import json
 import math
 import sqlite3
 import subprocess
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -486,6 +487,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     identity_gallery: dict[int, dict[str, Any]] = {}
     next_identity_id = 1
     processed = 0
+    fps_values: list[float] = []
 
     try:
         with detections_path.open("w", encoding="utf-8") as detections_file:
@@ -542,6 +544,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 )
 
                 flow_mean = 0.0
+                frame_start_time = time.monotonic()
                 if args.optical_flow and previous_frame is not None:
                     frame, flow_mean = draw_flow(frame, previous_frame, boxes, args.roi_padding)
                 feature_match_counts = draw_feature_correspondences(frame, current_tracks, prior_gallery) if args.reid else {}
@@ -599,6 +602,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         f"Analyzed {processed} of {total_processed_frames} sampled frames",
                     )
                 source_frame += 1
+                frame_elapsed = time.monotonic() - frame_start_time
+                fps_values.append(round(1.0 / max(0.001, frame_elapsed), 2))
     finally:
         capture.release()
         if ffmpeg.stdin is not None:
@@ -672,6 +677,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "video_fps": round(float(fps), 3),
         "video_width": width,
         "video_height": height,
+        "fps_over_time": fps_values,
         "configuration": {
             "detections": args.detections,
             "optical_flow": args.optical_flow,

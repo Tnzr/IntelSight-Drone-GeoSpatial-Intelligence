@@ -248,3 +248,15 @@ Implement desktop-style mission visualization without redundant loading of large
 
 3. Combined mission view
 - New "Mission" tab renders Map, 3D geolocation, and the object database in one screen with shared selection; each panel remains independently scrollable/zoomable.
+
+## 2026-08-20 CV preview error handling, ffmpeg keyframe fix, and FPS-over-time chart
+
+1. CV preview error diagnostics
+- Rust run_cv_preview now captures Python stderr and includes the last error line in the "no result" message, so crashes (OOM, CUDA errors, etc.) are visible instead of a silent failure.
+
+2. FFmpeg keyframe fix
+- Moved -ss after -i in prepare_media_preview so seeking is frame-accurate instead of landing on the nearest keyframe, eliminating the missing-frame glitches in the interactive inspector.
+
+3. FPS-over-time chart
+- Python CV preview now tracks per-frame processing time and exposes fps_over_time in the payload.
+- Charts tab gains a "Processing FPS over time" bar chart with peak/average metrics.

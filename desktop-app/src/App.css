@@ -1492,3 +1492,11 @@ th {
   .mission-3d-panel { grid-row: 2; }
   .mission-database-panel { grid-row: 3; }
 }
+
+.fps-chart .fps-bar {
+  background: #22c55e;
+}
+
+.fps-chart {
+  min-height: 80px;
+}

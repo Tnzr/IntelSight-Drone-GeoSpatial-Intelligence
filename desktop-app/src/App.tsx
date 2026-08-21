@@ -89,6 +89,7 @@ type CvPreviewResult = {
   video_fps?: number;
   video_width?: number;
   video_height?: number;
+  fps_over_time?: number[];
   configuration?: {
     detections: boolean;
     optical_flow: boolean;
@@ -980,6 +981,16 @@ function App() {
     });
   }, [frameObjectCounts]);
 
+  const fpsBuckets = useMemo(() => {
+    const fpsData = cvResult?.fps_over_time ?? [];
+    if (fpsData.length === 0) return [];
+    const bucketSize = Math.max(1, Math.ceil(fpsData.length / 16));
+    return Array.from({ length: Math.ceil(fpsData.length / bucketSize) }, (_, index) => {
+      const slice = fpsData.slice(index * bucketSize, (index + 1) * bucketSize);
+      return slice.reduce((sum, v) => sum + v, 0) / slice.length;
+    });
+  }, [cvResult]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -1706,6 +1717,23 @@ function App() {
               <span>Sampled frames <strong>{frameObjectCounts.length.toLocaleString()}</strong></span>
               <span>Peak objects <strong>{frameObjectCounts.length ? `${Math.max(...frameObjectCounts.map(([, count]) => count))}` : "--"}</strong></span>
               <span>Average objects <strong>{frameObjectCounts.length ? (frameObjectCounts.reduce((sum, [, count]) => sum + count, 0) / frameObjectCounts.length).toFixed(1) : "--"}</strong></span>
+            </div>
+
+            <h4 className="chart-section-title">Processing FPS over time</h4>
+            {fpsBuckets.length > 0 ? (
+              <div className="bar-chart fps-chart" aria-label="Processing FPS over time chart">
+                {fpsBuckets.map((value, index) => {
+                  const maximum = Math.max(...fpsBuckets, 1);
+                  return <div key={index} className="chart-bar fps-bar" style={{ height: `${Math.max(3, (value / maximum) * 100)}%` }} title={`${value.toFixed(1)} fps`} />;
+                })}
+              </div>
+            ) : (
+              <div className="panel-empty">Run a CV preview to chart processing FPS.</div>
+            )}
+            <div className="chart-summary">
+              <span>Sampled frames <strong>{(cvResult?.fps_over_time?.length ?? 0).toLocaleString()}</strong></span>
+              <span>Peak FPS <strong>{cvResult?.fps_over_time?.length ? `${Math.max(...cvResult.fps_over_time).toFixed(1)}` : "--"}</strong></span>
+              <span>Average FPS <strong>{cvResult?.fps_over_time?.length ? (cvResult.fps_over_time.reduce((sum, v) => sum + v, 0) / cvResult.fps_over_time.length).toFixed(1) : "--"}</strong></span>
             </div>
           </section>
         )}

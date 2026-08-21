@@ -483,8 +483,8 @@ async fn prepare_media_preview(
         let mut ffmpeg = Command::new("ffmpeg");
         ffmpeg
             .args(["-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats", "-y"])
-            .args(["-ss", &start_seconds.to_string()])
             .args(["-i", &path])
+            .args(["-ss", &start_seconds.to_string()])
             .args(["-t", &duration_label])
             .args([
                 "-map",
@@ -609,6 +609,7 @@ async fn run_cv_preview(
             .spawn()
             .map_err(|err| format!("Could not start CV preview: {err}"))?;
         let mut payload_line = None;
+        let mut stderr_buf = String::new();
         if let Some(stdout) = child.stdout.take() {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
@@ -628,12 +629,22 @@ async fn run_cv_preview(
             .wait_with_output()
             .map_err(|err| format!("CV preview process failed: {err}"))?;
         if !output.status.success() {
+            stderr_buf = String::from_utf8_lossy(&output.stderr).to_string();
             return Err(format!(
-                "CV preview failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
+                "CV preview process exited with code {:?}: {}",
+                output.status.code(),
+                stderr_buf.lines().last().unwrap_or("").trim()
             ));
         }
-        let payload_line = payload_line.ok_or_else(|| "CV preview returned no result".to_string())?;
+        let payload_line = payload_line.ok_or_else(|| {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let last_err = stderr.lines().last().unwrap_or("").trim();
+            if !last_err.is_empty() {
+                format!("CV preview returned no result. Python stderr: {}", last_err)
+            } else {
+                "CV preview returned no result".to_string()
+            }
+        })?;
         report_progress(&on_progress, "complete", 100, 100, "CV preview ready");
         serde_json::from_str(&payload_line).map_err(|err| format!("Invalid CV preview result: {err}"))
     })
